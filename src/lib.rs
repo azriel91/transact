@@ -7,6 +7,8 @@ use std::{
     path::Path,
 };
 
+pub mod model;
+
 /// Processes transactions and outputs them to the given stream.
 pub fn process<W>(path: &Path, mut out_stream: W) -> io::Result<()>
 where
