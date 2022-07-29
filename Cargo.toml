@@ -1,0 +1,15 @@
+[package]
+name = "transact"
+version = "0.1.0"
+edition = "2021"
+authors = ["Azriel Hoh <azriel91@gmail.com>"]
+description = "Toy transaction library"
+repository = "https://github.com/azriel91/transact"
+readme = "README.md"
+keywords = []
+license = "MIT OR Apache-2.0"
+
+[[bin]]
+name = "transact"
+
+[dependencies]
