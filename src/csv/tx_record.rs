@@ -1,3 +1,4 @@
+use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -13,7 +14,7 @@ pub struct TxRecord {
     r#type: TxType,
     client: ClientId,
     tx: TxId,
-    amount: Option<f64>,
+    amount: Option<Decimal>,
 }
 
 /// Types of transactions.

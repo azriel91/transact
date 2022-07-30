@@ -37,7 +37,7 @@ where
         .try_fold(Accounts::new(), |mut accounts, transaction| async move {
             let account = accounts
                 .entry(transaction.client())
-                .or_insert_with(|| Account::new(transaction.client()));
+                .or_insert_with(|| Account::empty(transaction.client()));
 
             TxProcessor::process(account, transaction);
 

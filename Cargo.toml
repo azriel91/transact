@@ -14,6 +14,8 @@ name = "transact"
 
 [dependencies]
 csv = "1.1.6"
+rust_decimal = { version = "1.25", features = ["serde-with-float"] }
+rust_decimal_macros = "1.25"
 futures = "0.3.21"
 serde = { version = "1.0.140", features = ["derive"] }
 tokio = { version = "1.20.1", features = ["io-util", "rt"] }

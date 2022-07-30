@@ -1,3 +1,4 @@
+use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 
 use crate::model::{ClientId, TxId};
@@ -81,12 +82,13 @@ impl From<Chargeback> for Transaction {
 pub struct Deposit {
     client: ClientId,
     tx: TxId,
-    amount: f64,
+    #[serde(with = "rust_decimal::serde::float")]
+    amount: Decimal,
 }
 
 impl Deposit {
     /// Returns a new `Deposit` transaction.
-    pub fn new(client: ClientId, tx: TxId, amount: f64) -> Self {
+    pub fn new(client: ClientId, tx: TxId, amount: Decimal) -> Self {
         Self { client, tx, amount }
     }
 
@@ -101,7 +103,7 @@ impl Deposit {
     }
 
     /// Get the transaction's amount.
-    pub fn amount(&self) -> f64 {
+    pub fn amount(&self) -> Decimal {
         self.amount
     }
 }
@@ -111,12 +113,13 @@ impl Deposit {
 pub struct Withdrawal {
     client: ClientId,
     tx: TxId,
-    amount: f64,
+    #[serde(with = "rust_decimal::serde::float")]
+    amount: Decimal,
 }
 
 impl Withdrawal {
     /// Returns a new `Withdrawal` transaction.
-    pub fn new(client: ClientId, tx: TxId, amount: f64) -> Self {
+    pub fn new(client: ClientId, tx: TxId, amount: Decimal) -> Self {
         Self { client, tx, amount }
     }
 
@@ -131,7 +134,7 @@ impl Withdrawal {
     }
 
     /// Get the transaction's amount.
-    pub fn amount(&self) -> f64 {
+    pub fn amount(&self) -> Decimal {
         self.amount
     }
 }
