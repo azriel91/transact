@@ -45,13 +45,11 @@ impl TryFrom<TxRecord> for Transaction {
         } = tx_record;
         let transaction = match r#type {
             TxType::Deposit => {
-                let amount =
-                    amount.ok_or_else(|| Error::DepositAmountNotProvided { client, tx })?;
+                let amount = amount.ok_or(Error::DepositAmountNotProvided { client, tx })?;
                 Transaction::from(Deposit::new(client, tx, amount))
             }
             TxType::Withdrawal => {
-                let amount =
-                    amount.ok_or_else(|| Error::WithdrawalAmountNotProvided { client, tx })?;
+                let amount = amount.ok_or(Error::WithdrawalAmountNotProvided { client, tx })?;
                 Transaction::from(Withdrawal::new(client, tx, amount))
             }
             TxType::Dispute => Transaction::from(Dispute::new(client, tx)),
