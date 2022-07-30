@@ -3,6 +3,12 @@
 //! In a larger project, this may be published as a separate crate so consumers
 //! may rely on the model API, while keeping the business logic private.
 
-pub use transaction::{Chargeback, Deposit, Dispute, Resolve, Transaction, Withdrawal};
+pub use self::{
+    client_id::ClientId,
+    transaction::{Chargeback, Deposit, Dispute, Resolve, Transaction, Withdrawal},
+    tx_id::TxId,
+};
 
+mod client_id;
 mod transaction;
+mod tx_id;

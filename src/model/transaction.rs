@@ -1,3 +1,5 @@
+use crate::model::{ClientId, TxId};
+
 /// Types of transactions.
 #[derive(Debug)]
 pub enum Transaction {
@@ -21,24 +23,24 @@ pub enum Transaction {
 /// Credit to the client's asset account.
 #[derive(Debug)]
 pub struct Deposit {
-    client: u16,
-    tx: u32,
+    client: ClientId,
+    tx: TxId,
     amount: f64,
 }
 
 impl Deposit {
     /// Returns a new `Deposit` transaction.
-    pub fn new(client: u16, tx: u32, amount: f64) -> Self {
+    pub fn new(client: ClientId, tx: TxId, amount: f64) -> Self {
         Self { client, tx, amount }
     }
 
     /// Get the transaction's client.
-    pub fn client(&self) -> u16 {
+    pub fn client(&self) -> ClientId {
         self.client
     }
 
     /// Get the transaction's tx.
-    pub fn tx(&self) -> u32 {
+    pub fn tx(&self) -> TxId {
         self.tx
     }
 
@@ -51,24 +53,24 @@ impl Deposit {
 /// Debit to the client's asset account.
 #[derive(Debug)]
 pub struct Withdrawal {
-    client: u16,
-    tx: u32,
+    client: ClientId,
+    tx: TxId,
     amount: f64,
 }
 
 impl Withdrawal {
     /// Returns a new `Withdrawal` transaction.
-    pub fn new(client: u16, tx: u32, amount: f64) -> Self {
+    pub fn new(client: ClientId, tx: TxId, amount: f64) -> Self {
         Self { client, tx, amount }
     }
 
     /// Get the transaction's client.
-    pub fn client(&self) -> u16 {
+    pub fn client(&self) -> ClientId {
         self.client
     }
 
     /// Get the transaction's tx.
-    pub fn tx(&self) -> u32 {
+    pub fn tx(&self) -> TxId {
         self.tx
     }
 
@@ -81,23 +83,23 @@ impl Withdrawal {
 /// Client's claim that a transaction was erroneous and should be reversed.
 #[derive(Debug)]
 pub struct Dispute {
-    client: u16,
-    tx: u32,
+    client: ClientId,
+    tx: TxId,
 }
 
 impl Dispute {
     /// Returns a new `Dispute` transaction.
-    pub fn new(client: u16, tx: u32) -> Self {
+    pub fn new(client: ClientId, tx: TxId) -> Self {
         Self { client, tx }
     }
 
     /// Get the transaction's client.
-    pub fn client(&self) -> u16 {
+    pub fn client(&self) -> ClientId {
         self.client
     }
 
     /// Get the transaction's tx.
-    pub fn tx(&self) -> u32 {
+    pub fn tx(&self) -> TxId {
         self.tx
     }
 }
@@ -105,23 +107,23 @@ impl Dispute {
 /// Resolution to a dispute, releasing the associated held funds.
 #[derive(Debug)]
 pub struct Resolve {
-    client: u16,
-    tx: u32,
+    client: ClientId,
+    tx: TxId,
 }
 
 impl Resolve {
     /// Returns a new `Resolve` transaction.
-    pub fn new(client: u16, tx: u32) -> Self {
+    pub fn new(client: ClientId, tx: TxId) -> Self {
         Self { client, tx }
     }
 
     /// Get the transaction's client.
-    pub fn client(&self) -> u16 {
+    pub fn client(&self) -> ClientId {
         self.client
     }
 
     /// Get the transaction's tx.
-    pub fn tx(&self) -> u32 {
+    pub fn tx(&self) -> TxId {
         self.tx
     }
 }
@@ -129,23 +131,23 @@ impl Resolve {
 /// Final state of a dispute and represents the client reversing a transaction.
 #[derive(Debug)]
 pub struct Chargeback {
-    client: u16,
-    tx: u32,
+    client: ClientId,
+    tx: TxId,
 }
 
 impl Chargeback {
     /// Returns a new `Chargeback` transaction.
-    pub fn new(client: u16, tx: u32) -> Self {
+    pub fn new(client: ClientId, tx: TxId) -> Self {
         Self { client, tx }
     }
 
     /// Get the transaction's client.
-    pub fn client(&self) -> u16 {
+    pub fn client(&self) -> ClientId {
         self.client
     }
 
     /// Get the transaction's tx.
-    pub fn tx(&self) -> u32 {
+    pub fn tx(&self) -> TxId {
         self.tx
     }
 }
