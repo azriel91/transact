@@ -1,7 +1,9 @@
 use std::ops::{Deref, DerefMut};
 
+use serde::{Deserialize, Serialize};
+
 /// Transaction ID. [`u32`] newtype.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 pub struct TxId(u32);
 
 impl TxId {

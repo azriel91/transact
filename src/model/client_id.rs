@@ -1,7 +1,9 @@
 use std::ops::{Deref, DerefMut};
 
+use serde::{Deserialize, Serialize};
+
 /// Client ID. [`u16`] newtype.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 pub struct ClientId(u16);
 
 impl ClientId {

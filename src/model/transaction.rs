@@ -1,7 +1,9 @@
+use serde::{Deserialize, Serialize};
+
 use crate::model::{ClientId, TxId};
 
 /// Types of transactions.
-#[derive(Debug)]
+#[derive(Debug, Deserialize, Serialize)]
 pub enum Transaction {
     /// Credit to the client's asset account.
     Deposit(Deposit),
@@ -21,7 +23,7 @@ pub enum Transaction {
 }
 
 /// Credit to the client's asset account.
-#[derive(Debug)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Deposit {
     client: ClientId,
     tx: TxId,
@@ -51,7 +53,7 @@ impl Deposit {
 }
 
 /// Debit to the client's asset account.
-#[derive(Debug)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Withdrawal {
     client: ClientId,
     tx: TxId,
@@ -81,7 +83,7 @@ impl Withdrawal {
 }
 
 /// Client's claim that a transaction was erroneous and should be reversed.
-#[derive(Debug)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Dispute {
     client: ClientId,
     tx: TxId,
@@ -105,7 +107,7 @@ impl Dispute {
 }
 
 /// Resolution to a dispute, releasing the associated held funds.
-#[derive(Debug)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Resolve {
     client: ClientId,
     tx: TxId,
@@ -129,7 +131,7 @@ impl Resolve {
 }
 
 /// Final state of a dispute and represents the client reversing a transaction.
-#[derive(Debug)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Chargeback {
     client: ClientId,
     tx: TxId,

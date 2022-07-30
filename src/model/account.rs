@@ -1,7 +1,9 @@
+use serde::{Deserialize, Serialize};
+
 use crate::model::ClientId;
 
 /// Client account state.
-#[derive(Debug)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Account {
     client: ClientId,
     available: f64,
