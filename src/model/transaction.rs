@@ -22,6 +22,30 @@ pub enum Transaction {
     Chargeback(Chargeback),
 }
 
+impl Transaction {
+    /// Returns this transaction's client ID.
+    pub fn client(&self) -> ClientId {
+        match self {
+            Self::Deposit(deposit) => deposit.client(),
+            Self::Withdrawal(withdrawal) => withdrawal.client(),
+            Self::Dispute(dispute) => dispute.client(),
+            Self::Resolve(resolve) => resolve.client(),
+            Self::Chargeback(chargeback) => chargeback.client(),
+        }
+    }
+
+    /// Returns this transaction's transaction ID.
+    pub fn tx(&self) -> TxId {
+        match self {
+            Self::Deposit(deposit) => deposit.tx(),
+            Self::Withdrawal(withdrawal) => withdrawal.tx(),
+            Self::Dispute(dispute) => dispute.tx(),
+            Self::Resolve(resolve) => resolve.tx(),
+            Self::Chargeback(chargeback) => chargeback.tx(),
+        }
+    }
+}
+
 impl From<Deposit> for Transaction {
     fn from(deposit: Deposit) -> Transaction {
         Transaction::Deposit(deposit)

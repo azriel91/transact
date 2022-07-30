@@ -29,7 +29,9 @@ pub enum Error {
         tx: TxId,
     },
     /// Error writing output.
-    OutputWrite(std::io::Error),
+    OutputWrite(csv::Error),
+    /// Error flushing output stream.
+    OutputFlush(std::io::Error),
 }
 
 impl fmt::Display for Error {
@@ -48,6 +50,7 @@ impl fmt::Display for Error {
                 "Withdrawal amount not provided in transaction record for client {client}, transaction {tx}."
             ),
             Self::OutputWrite(_) => write!(f, "Error writing output"),
+            Self::OutputFlush(_) => write!(f, "Error flushing output stream"),
         }
     }
 }
@@ -60,6 +63,7 @@ impl std::error::Error for Error {
             Self::DepositAmountNotProvided { .. } => None,
             Self::WithdrawalAmountNotProvided { .. } => None,
             Self::OutputWrite(error) => Some(error),
+            Self::OutputFlush(error) => Some(error),
         }
     }
 }
