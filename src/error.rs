@@ -54,6 +54,15 @@ pub enum Error {
         /// Transaction ID.
         tx: TxId,
     },
+    /// Withdrawal transaction amount is negative.
+    WithdrawalAmountNegative {
+        /// Client ID.
+        client: ClientId,
+        /// Transaction ID.
+        tx: TxId,
+        /// Amount in the transaction.
+        amount: Decimal,
+    },
     /// Error writing output.
     OutputWrite(csv::Error),
     /// Error flushing output stream.
@@ -87,6 +96,10 @@ impl fmt::Display for Error {
                 f,
                 "Withdrawal amount not provided in transaction record for client {client}, transaction {tx}."
             ),
+            Self::WithdrawalAmountNegative { client, tx, amount } => write!(
+                f,
+                "Withdrawal transaction amount is negative: client {client}, transaction {tx}, amount: {amount}."
+            ),
             Self::OutputWrite(_) => write!(f, "Error writing output"),
             Self::OutputFlush(_) => write!(f, "Error flushing output stream"),
         }
@@ -103,6 +116,7 @@ impl std::error::Error for Error {
             Self::DepositAvailableOverflow { .. } => None,
             Self::DepositTotalOverflow { .. } => None,
             Self::WithdrawalAmountNotProvided { .. } => None,
+            Self::WithdrawalAmountNegative { .. } => None,
             Self::OutputWrite(error) => Some(error),
             Self::OutputFlush(error) => Some(error),
         }
