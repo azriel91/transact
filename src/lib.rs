@@ -1,4 +1,5 @@
 #![deny(missing_docs, missing_debug_implementations)]
+#![deny(clippy::float_arithmetic)] // prevent arithmetic overflow
 
 //! Toy transaction library
 
@@ -19,10 +20,12 @@ use futures::{
 use crate::{
     csv::TransactCsv,
     model::{Account, Accounts},
+    tx_processor::TxProcessor,
 };
 
 mod csv;
 mod error;
+mod tx_processor;
 
 /// Processes transactions and outputs them to the given stream.
 pub async fn process<W>(path: &Path, out_stream: W) -> Result<(), Error>
@@ -32,9 +35,11 @@ where
     let transactions = TransactCsv::stream(path)?;
     let accounts = transactions
         .try_fold(Accounts::new(), |mut accounts, transaction| async move {
-            let _account = accounts
+            let account = accounts
                 .entry(transaction.client())
                 .or_insert_with(|| Account::new(transaction.client()));
+
+            TxProcessor::process(account, transaction);
 
             Ok(accounts)
         })
