@@ -13,4 +13,6 @@ license = "MIT OR Apache-2.0"
 name = "transact"
 
 [dependencies]
+csv = "1.1.6"
+futures = "0.3.21"
 serde = { version = "1.0.140", features = ["derive"] }
