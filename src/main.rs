@@ -1,6 +1,8 @@
 use std::{env, io};
 
-fn main() -> io::Result<()> {
+use transact::Error;
+
+fn main() -> Result<(), Error> {
     // `nth(1)` skips executable path.
     let file_path = env::args().nth(1);
     if let Some(file_path) = file_path {
