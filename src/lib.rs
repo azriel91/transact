@@ -32,15 +32,9 @@ where
     let transactions = TransactCsv::stream(path)?;
     let accounts = transactions
         .try_fold(Accounts::new(), |mut accounts, transaction| async move {
-            let _account = accounts.entry(transaction.client()).or_insert_with(|| {
-                let client = transaction.client();
-                let available = 0.0;
-                let held = 0.0;
-                let total = 0.0;
-                let locked = false;
-
-                Account::new(client, available, held, total, locked)
-            });
+            let _account = accounts
+                .entry(transaction.client())
+                .or_insert_with(|| Account::new(transaction.client()));
 
             Ok(accounts)
         })

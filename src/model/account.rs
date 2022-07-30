@@ -14,7 +14,13 @@ pub struct Account {
 
 impl Account {
     /// Returns a new `Account`.
-    pub fn new(client: ClientId, available: f64, held: f64, total: f64, locked: bool) -> Self {
+    pub fn new(client: ClientId) -> Self {
+        // Should be sensible defaults
+        let available = 0.0;
+        let held = 0.0;
+        let total = 0.0;
+        let locked = false;
+
         Self {
             client,
             available,
