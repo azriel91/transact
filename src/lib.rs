@@ -2,18 +2,18 @@
 
 //! Toy transaction library
 
-use std::path::Path;
-
-use crate::model::Account;
-use futures::stream::TryStreamExt;
-
-use crate::csv::TransactCsv;
-
-//
-
-pub use crate::error::Error;
+// API
 
 pub mod model;
+pub use crate::error::Error;
+
+// impl
+
+use std::path::Path;
+
+use futures::stream::TryStreamExt;
+
+use crate::{csv::TransactCsv, model::Account};
 
 mod csv;
 mod error;

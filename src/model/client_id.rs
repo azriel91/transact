@@ -6,7 +6,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 
 /// Client ID. [`u16`] newtype.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub struct ClientId(u16);
 
 impl ClientId {

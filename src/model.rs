@@ -5,12 +5,14 @@
 
 pub use self::{
     account::Account,
+    accounts::Accounts,
     client_id::ClientId,
     transaction::{Chargeback, Deposit, Dispute, Resolve, Transaction, Withdrawal},
     tx_id::TxId,
 };
 
 mod account;
+mod accounts;
 mod client_id;
 mod transaction;
 mod tx_id;
