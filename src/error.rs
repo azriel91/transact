@@ -1,5 +1,7 @@
 use std::{fmt, path::PathBuf};
 
+use rust_decimal::Decimal;
+
 use crate::model::{ClientId, TxId};
 
 /// Errors that happen during processing.
@@ -16,6 +18,30 @@ pub enum Error {
     TransactionDeserialize(csv::Error),
     /// Deposit amount not provided in transaction record.
     DepositAmountNotProvided {
+        /// Client ID.
+        client: ClientId,
+        /// Transaction ID.
+        tx: TxId,
+    },
+    /// Deposit transaction amount is negative.
+    DepositAmountNegative {
+        /// Client ID.
+        client: ClientId,
+        /// Transaction ID.
+        tx: TxId,
+        /// Amount in the transaction.
+        amount: Decimal,
+    },
+    /// Deposit transaction would cause an account's available funds to
+    /// overflow.
+    DepositAvailableOverflow {
+        /// Client ID.
+        client: ClientId,
+        /// Transaction ID.
+        tx: TxId,
+    },
+    /// Deposit transaction would cause an account's total funds to overflow.
+    DepositTotalOverflow {
         /// Client ID.
         client: ClientId,
         /// Transaction ID.
@@ -45,6 +71,18 @@ impl fmt::Display for Error {
                 f,
                 "Deposit amount not provided in transaction record for client {client}, transaction {tx}."
             ),
+            Self::DepositAmountNegative { client, tx, amount } => write!(
+                f,
+                "Deposit transaction amount is negative: client {client}, transaction {tx}, amount: {amount}."
+            ),
+            Self::DepositAvailableOverflow { client, tx } => write!(
+                f,
+                "Deposit transaction would cause an account's available funds to overflow: client {client}, transaction {tx}."
+            ),
+            Self::DepositTotalOverflow { client, tx } => write!(
+                f,
+                "A deposit transaction would cause an account's total funds to overflow: client {client}, transaction {tx}."
+            ),
             Self::WithdrawalAmountNotProvided { client, tx } => write!(
                 f,
                 "Withdrawal amount not provided in transaction record for client {client}, transaction {tx}."
@@ -61,6 +99,9 @@ impl std::error::Error for Error {
             Self::TransactCsvOpen { error, .. } => Some(error),
             Self::TransactionDeserialize(error) => Some(error),
             Self::DepositAmountNotProvided { .. } => None,
+            Self::DepositAmountNegative { .. } => None,
+            Self::DepositAvailableOverflow { .. } => None,
+            Self::DepositTotalOverflow { .. } => None,
             Self::WithdrawalAmountNotProvided { .. } => None,
             Self::OutputWrite(error) => Some(error),
             Self::OutputFlush(error) => Some(error),

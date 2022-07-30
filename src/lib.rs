@@ -39,7 +39,7 @@ where
                 .entry(transaction.client())
                 .or_insert_with(|| Account::empty(transaction.client()));
 
-            TxProcessor::process(account, transaction);
+            TxProcessor::process(account, transaction)?;
 
             Ok(accounts)
         })

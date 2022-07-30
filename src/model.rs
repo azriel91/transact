@@ -4,7 +4,7 @@
 //! may rely on the model API, while keeping the business logic private.
 
 pub use self::{
-    account::Account,
+    account::{Account, TotalOverflow},
     accounts::Accounts,
     client_id::ClientId,
     transaction::{Chargeback, Deposit, Dispute, Resolve, Transaction, Withdrawal},

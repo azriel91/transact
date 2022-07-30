@@ -4,6 +4,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::model::ClientId;
 
+/// Error when `available` and `held` amounts will overflow when added together.
+#[derive(Debug)]
+pub struct TotalOverflow;
+
 /// Client account state.
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Account {
@@ -19,22 +23,21 @@ pub struct Account {
 
 impl Account {
     /// Returns a new `Account` with the provided values.
-    pub fn new(
+    pub fn try_new(
         client: ClientId,
         available: Decimal,
         held: Decimal,
-        total: Decimal,
         locked: bool,
-    ) -> Self {
-        debug_assert!(available.checked_add(held) == Some(total));
+    ) -> Result<Self, TotalOverflow> {
+        let total = available.checked_add(held).ok_or(TotalOverflow)?;
 
-        Self {
+        Ok(Self {
             client,
             available,
             held,
             total,
             locked,
-        }
+        })
     }
 
     /// Returns a new empty `Account`.
