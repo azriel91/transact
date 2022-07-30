@@ -11,9 +11,15 @@ pub use crate::error::Error;
 
 use std::path::Path;
 
-use futures::stream::TryStreamExt;
+use futures::{
+    stream::{self, TryStreamExt},
+    StreamExt,
+};
 
-use crate::{csv::TransactCsv, model::Account};
+use crate::{
+    csv::TransactCsv,
+    model::{Account, Accounts},
+};
 
 mod csv;
 mod error;
@@ -24,16 +30,24 @@ where
     W: std::io::Write,
 {
     let transactions = TransactCsv::stream(path)?;
-    let mut writer = transactions
-        .map_ok(|transaction| {
-            let client = transaction.client();
-            let available = 0.0;
-            let held = 0.0;
-            let total = 0.0;
-            let locked = false;
+    let accounts = transactions
+        .try_fold(Accounts::new(), |mut accounts, transaction| async move {
+            let _account = accounts.entry(transaction.client()).or_insert_with(|| {
+                let client = transaction.client();
+                let available = 0.0;
+                let held = 0.0;
+                let total = 0.0;
+                let locked = false;
 
-            Account::new(client, available, held, total, locked)
+                Account::new(client, available, held, total, locked)
+            });
+
+            Ok(accounts)
         })
+        .await?;
+
+    let mut writer = stream::iter(accounts.into_values())
+        .map(Result::<Account, Error>::Ok)
         .try_fold(
             TransactCsv::csv_writer(out_stream),
             |mut writer, account| async move {
