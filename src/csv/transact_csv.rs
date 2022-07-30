@@ -2,7 +2,7 @@ use std::{fs::File, path::Path};
 
 use futures::{stream, TryStream, TryStreamExt};
 
-use crate::{model::Transaction, Error};
+use crate::{csv::TxRecord, model::Transaction, Error};
 
 /// Abstraction to call [`csv`] functions with suitable parameters.
 #[derive(Debug)]
@@ -16,8 +16,9 @@ impl TransactCsv {
     /// * `path`: Path to the transactions CSV file.
     pub fn stream(path: &Path) -> Result<impl TryStream<Item = Result<Transaction, Error>>, Error> {
         Self::open(path).map(|csv_reader| {
-            stream::iter(csv_reader.into_deserialize::<Transaction>())
+            stream::iter(csv_reader.into_deserialize::<TxRecord>())
                 .map_err(Error::TransactionDeserialize)
+                .and_then(|tx_record| async { Transaction::try_from(tx_record) })
         })
     }
 

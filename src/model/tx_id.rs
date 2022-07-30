@@ -1,4 +1,7 @@
-use std::ops::{Deref, DerefMut};
+use std::{
+    fmt,
+    ops::{Deref, DerefMut},
+};
 
 use serde::{Deserialize, Serialize};
 
@@ -35,5 +38,11 @@ impl DerefMut for TxId {
 impl From<u32> for TxId {
     fn from(tx_id: u32) -> Self {
         Self(tx_id)
+    }
+}
+
+impl fmt::Display for TxId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
     }
 }

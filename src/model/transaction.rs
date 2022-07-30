@@ -22,6 +22,36 @@ pub enum Transaction {
     Chargeback(Chargeback),
 }
 
+impl From<Deposit> for Transaction {
+    fn from(deposit: Deposit) -> Transaction {
+        Transaction::Deposit(deposit)
+    }
+}
+
+impl From<Withdrawal> for Transaction {
+    fn from(withdrawal: Withdrawal) -> Transaction {
+        Transaction::Withdrawal(withdrawal)
+    }
+}
+
+impl From<Dispute> for Transaction {
+    fn from(dispute: Dispute) -> Transaction {
+        Transaction::Dispute(dispute)
+    }
+}
+
+impl From<Resolve> for Transaction {
+    fn from(resolve: Resolve) -> Transaction {
+        Transaction::Resolve(resolve)
+    }
+}
+
+impl From<Chargeback> for Transaction {
+    fn from(chargeback: Chargeback) -> Transaction {
+        Transaction::Chargeback(chargeback)
+    }
+}
+
 /// Credit to the client's asset account.
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Deposit {
