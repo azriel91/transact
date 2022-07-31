@@ -51,8 +51,14 @@ impl<'block_store> TxProcessor<'block_store> {
         available_next
             .ok_or(Error::DepositAvailableOverflow { client, tx })
             .and_then(|available_next| {
-                Account::try_new(client, available_next, account.held(), account.locked())
-                    .map_err(|_| Error::DepositTotalOverflow { client, tx })
+                Account::try_new(
+                    client,
+                    available_next,
+                    account.held(),
+                    account.locked(),
+                    account.disputed_txs().to_vec(),
+                )
+                .map_err(|_| Error::DepositTotalOverflow { client, tx })
             })
             .map(|account_updated| *account = account_updated)
     }
@@ -83,6 +89,7 @@ impl<'block_store> TxProcessor<'block_store> {
                 available_next,
                 account.held(),
                 account.locked(),
+                account.disputed_txs().to_vec(),
             )
             .expect(
                 "Overflow impossible: Withdrawal amount is less than or equal to available amount, \
@@ -125,11 +132,15 @@ impl<'block_store> TxProcessor<'block_store> {
                         amount,
                     })?;
 
+                    let mut disputed_txs = Vec::with_capacity(account.disputed_txs().len() + 1);
+                    disputed_txs.extend_from_slice(account.disputed_txs());
+                    disputed_txs.push(tx);
                     let account_updated = Account::try_new(
                         client,
                         available_next,
                         held_next,
                         account.locked(),
+                        disputed_txs,
                     )
                     .expect("Overflow impossible: available and held amounts should equal previous total.");
 
@@ -150,61 +161,73 @@ impl<'block_store> TxProcessor<'block_store> {
     }
 
     async fn handle_resolve(&self, account: &mut Account, resolve: Resolve) -> Result<(), Error> {
-        // TODO: Only process resolve transactions iff there is an open dispute.
-        let transaction = self.block_store.find_transaction(resolve.tx()).await;
-        match transaction {
-            Ok(transaction) => match transaction {
-                Transaction::Withdrawal(withdrawal) => {
-                    let client = account.client();
-                    let tx = withdrawal.tx();
-                    let available = account.available();
-                    let held = account.held();
-                    let amount = withdrawal.amount();
+        let resolve_tx = resolve.tx();
+        let disputed_tx_pos = account
+            .disputed_txs()
+            .iter()
+            .position(|disputed_tx| disputed_tx == &resolve_tx);
 
-                    if amount.cmp(&held) == Ordering::Greater {
-                        // Not enough held to subtract.
-                        return Err(Error::ResolveInsufficientHeld {
-                            client,
-                            tx,
-                            held,
-                            amount,
-                        });
-                    }
+        if let Some(disputed_tx_pos) = disputed_tx_pos {
+            let transaction = self.block_store.find_transaction(resolve_tx).await;
+            match transaction {
+                Ok(transaction) => match transaction {
+                    Transaction::Withdrawal(withdrawal) => {
+                        let client = account.client();
+                        let tx = withdrawal.tx();
+                        let available = account.available();
+                        let held = account.held();
+                        let amount = withdrawal.amount();
 
-                    // never negative, as we've done the comparison above
-                    let held_next = held.saturating_sub(withdrawal.amount());
+                        if amount.cmp(&held) == Ordering::Greater {
+                            // Not enough held to subtract.
+                            return Err(Error::ResolveInsufficientHeld {
+                                client,
+                                tx,
+                                held,
+                                amount,
+                            });
+                        }
 
-                    let available_next =
-                        available
-                            .checked_add(amount)
-                            .ok_or(Error::ResolveAvailableOverflow {
+                        // never negative, as we've done the comparison above
+                        let held_next = held.saturating_sub(withdrawal.amount());
+
+                        let available_next = available.checked_add(amount).ok_or(
+                            Error::ResolveAvailableOverflow {
                                 client,
                                 tx,
                                 available,
                                 amount,
-                            })?;
+                            },
+                        )?;
 
-                    let account_updated = Account::try_new(
-                        client,
-                        available_next,
-                        held_next,
-                        account.locked(),
-                    )
-                    .expect("Overflow impossible: available and held amounts should equal previous total.");
+                        let mut disputed_txs = account.disputed_txs().to_vec();
+                        disputed_txs.swap_remove(disputed_tx_pos);
+                        let account_updated = Account::try_new(
+                            client,
+                            available_next,
+                            held_next,
+                            account.locked(),
+                            disputed_txs,
+                        )
+                        .expect("Overflow impossible: available and held amounts should equal previous total.");
 
-                    *account = account_updated;
+                        *account = account_updated;
 
+                        Ok(())
+                    }
+                    _ => unreachable!(
+                        "Only withdrawals may be disputed -- see `TxBlockStore::find_transaction`."
+                    ),
+                },
+                Err(Error::DisputeTxNotFound { .. }) => {
+                    // Safe to ignore, according to spec
                     Ok(())
                 }
-                _ => unreachable!(
-                    "Only withdrawals may be disputed -- see `TxBlockStore::find_transaction`."
-                ),
-            },
-            Err(Error::DisputeTxNotFound { .. }) => {
-                // Safe to ignore, according to spec
-                Ok(())
+                Err(e) => Err(e),
             }
-            Err(e) => Err(e),
+        } else {
+            // We can ignore this, according to spec.
+            Ok(())
         }
     }
 
@@ -239,8 +262,8 @@ mod tests {
         let tx_processor = TxProcessor::new(tx_block_store);
         tx_processor.handle_deposit(&mut account, Deposit::new(client, tx, amount))?;
 
-        let account_expected =
-            Account::try_new(client, dec!(1.0), dec!(0.0), false).expect("Test data invalid.");
+        let account_expected = Account::try_new(client, dec!(1.0), dec!(0.0), false, vec![])
+            .expect("Test data invalid.");
         assert_eq!(account_expected, account);
         Ok(())
     }
@@ -269,8 +292,8 @@ mod tests {
         let client = ClientId::new(1);
         let tx = TxId::new(2);
         let amount = Decimal::MAX;
-        let mut account =
-            Account::try_new(client, dec!(1.0), dec!(0.0), false).expect("Test data invalid.");
+        let mut account = Account::try_new(client, dec!(1.0), dec!(0.0), false, vec![])
+            .expect("Test data invalid.");
 
         let tx_block_store = &TxBlockStore::try_new().expect("Failed to initialize block store.");
         let tx_processor = TxProcessor::new(tx_block_store);
@@ -289,8 +312,8 @@ mod tests {
         let client = ClientId::new(1);
         let tx = TxId::new(2);
         let amount = Decimal::MAX.saturating_sub(dec!(1.0));
-        let mut account =
-            Account::try_new(client, dec!(1.0), dec!(2.0), false).expect("Test data invalid.");
+        let mut account = Account::try_new(client, dec!(1.0), dec!(2.0), false, vec![])
+            .expect("Test data invalid.");
 
         let tx_block_store = &TxBlockStore::try_new().expect("Failed to initialize block store.");
         let tx_processor = TxProcessor::new(tx_block_store);
@@ -310,15 +333,15 @@ mod tests {
         let client = ClientId::new(1);
         let tx = TxId::new(2);
         let amount = dec!(1.0);
-        let mut account =
-            Account::try_new(client, dec!(2.0), dec!(0.0), false).expect("Test data invalid.");
+        let mut account = Account::try_new(client, dec!(2.0), dec!(0.0), false, vec![])
+            .expect("Test data invalid.");
 
         let tx_block_store = &TxBlockStore::try_new().expect("Failed to initialize block store.");
         let tx_processor = TxProcessor::new(tx_block_store);
         tx_processor.handle_withdrawal(&mut account, Withdrawal::new(client, tx, amount))?;
 
-        let account_expected =
-            Account::try_new(client, dec!(1.0), dec!(0.0), false).expect("Test data invalid.");
+        let account_expected = Account::try_new(client, dec!(1.0), dec!(0.0), false, vec![])
+            .expect("Test data invalid.");
         assert_eq!(account_expected, account);
         Ok(())
     }
@@ -329,15 +352,15 @@ mod tests {
         let client = ClientId::new(1);
         let tx = TxId::new(2);
         let amount = dec!(1.0);
-        let mut account =
-            Account::try_new(client, dec!(1.0), dec!(0.0), false).expect("Test data invalid.");
+        let mut account = Account::try_new(client, dec!(1.0), dec!(0.0), false, vec![])
+            .expect("Test data invalid.");
 
         let tx_block_store = &TxBlockStore::try_new().expect("Failed to initialize block store.");
         let tx_processor = TxProcessor::new(tx_block_store);
         tx_processor.handle_withdrawal(&mut account, Withdrawal::new(client, tx, amount))?;
 
-        let account_expected =
-            Account::try_new(client, dec!(0.0), dec!(0.0), false).expect("Test data invalid.");
+        let account_expected = Account::try_new(client, dec!(0.0), dec!(0.0), false, vec![])
+            .expect("Test data invalid.");
         assert_eq!(account_expected, account);
         Ok(())
     }
@@ -347,15 +370,15 @@ mod tests {
         let client = ClientId::new(1);
         let tx = TxId::new(2);
         let amount = dec!(2.0);
-        let mut account =
-            Account::try_new(client, dec!(1.0), dec!(0.0), false).expect("Test data invalid.");
+        let mut account = Account::try_new(client, dec!(1.0), dec!(0.0), false, vec![])
+            .expect("Test data invalid.");
 
         let tx_block_store = &TxBlockStore::try_new().expect("Failed to initialize block store.");
         let tx_processor = TxProcessor::new(tx_block_store);
         tx_processor.handle_withdrawal(&mut account, Withdrawal::new(client, tx, amount))?;
 
-        let account_expected =
-            Account::try_new(client, dec!(1.0), dec!(0.0), false).expect("Test data invalid.");
+        let account_expected = Account::try_new(client, dec!(1.0), dec!(0.0), false, vec![])
+            .expect("Test data invalid.");
         assert_eq!(account_expected, account);
         Ok(())
     }

@@ -2,7 +2,7 @@ use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use serde::{Deserialize, Serialize};
 
-use crate::model::ClientId;
+use crate::model::{ClientId, TxId};
 
 /// Error when `available` and `held` amounts will overflow when added together.
 #[derive(Debug)]
@@ -19,6 +19,8 @@ pub struct Account {
     #[serde(with = "rust_decimal::serde::float")]
     total: Decimal,
     locked: bool,
+    #[serde(skip)]
+    disputed_txs: Vec<TxId>,
 }
 
 impl Account {
@@ -28,6 +30,7 @@ impl Account {
         available: Decimal,
         held: Decimal,
         locked: bool,
+        disputed_txs: Vec<TxId>,
     ) -> Result<Self, TotalOverflow> {
         let total = available.checked_add(held).ok_or(TotalOverflow)?;
 
@@ -37,6 +40,7 @@ impl Account {
             held,
             total,
             locked,
+            disputed_txs,
         })
     }
 
@@ -47,6 +51,7 @@ impl Account {
         let held = dec!(0.0);
         let total = dec!(0.0);
         let locked = false;
+        let disputed_txs = vec![];
 
         Self {
             client,
@@ -54,6 +59,7 @@ impl Account {
             held,
             total,
             locked,
+            disputed_txs,
         }
     }
 
@@ -80,5 +86,10 @@ impl Account {
     /// Returns whether the account is locked.
     pub fn locked(&self) -> bool {
         self.locked
+    }
+
+    /// Returns open disputed transactions.
+    pub fn disputed_txs(&self) -> &[TxId] {
+        &self.disputed_txs
     }
 }
