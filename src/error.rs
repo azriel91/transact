@@ -85,6 +85,18 @@ pub enum Error {
         /// Amount that is disputed.
         amount: Decimal,
     },
+    /// Account does not have sufficient funds to unhold in a dispute
+    /// chargeback.
+    ChargebackInsufficientHeld {
+        /// Client ID.
+        client: ClientId,
+        /// Transaction ID that was disputed.
+        tx: TxId,
+        /// Amount client has held.
+        held: Decimal,
+        /// Amount that is disputed.
+        amount: Decimal,
+    },
     /// Error opening transactions CSV.
     TransactCsvOpen {
         /// Path to the CSV.
@@ -213,6 +225,16 @@ impl fmt::Display for Error {
                 "Account available amount would overflow for dispute resolution:\n\
                  client {client}, transaction {tx}, available {available}, amount {amount}.",
             ),
+            Self::ChargebackInsufficientHeld {
+                client,
+                tx,
+                held,
+                amount,
+            } => write!(
+                f,
+                "Account does not have sufficient funds to unhold in a dispute chargeback:\n\
+                 client {client}, transaction {tx}, held {held}, amount {amount}.",
+            ),
             Self::TransactCsvOpen { path, .. } => {
                 write!(f, "Error opening transactions CSV: {}", path.display())
             }
@@ -262,6 +284,7 @@ impl std::error::Error for Error {
             Self::DisputeHeldOverflow { .. } => None,
             Self::ResolveInsufficientHeld { .. } => None,
             Self::ResolveAvailableOverflow { .. } => None,
+            Self::ChargebackInsufficientHeld { .. } => None,
             Self::TransactCsvOpen { error, .. } => Some(error),
             Self::TransactionDeserialize(error) => Some(error),
             Self::DepositAmountNotProvided { .. } => None,
