@@ -1,4 +1,8 @@
-use std::{fmt, path::PathBuf};
+use std::{
+    ffi::OsString,
+    fmt,
+    path::{Path, PathBuf},
+};
 
 use rust_decimal::Decimal;
 
@@ -7,15 +11,101 @@ use crate::model::{ClientId, TxId};
 /// Errors that happen during processing.
 #[derive(Debug)]
 pub enum Error {
+    /// Error creating directory to store transaction block files.
+    BlockStoreDirCreate(std::io::Error),
+    /// Error reading block store directory to find transaction.
+    BlockStoreDirRead(std::io::Error),
+    /// Error creating transaction block file.
+    BlockFileCreate(std::io::Error),
+    /// Error flushing output stream for a block file.
+    BlockFileFlush(std::io::Error),
+    /// Error flushing output stream for a block file.
+    BlockFileRename {
+        /// File name to rename from.
+        from: String,
+        /// File name to rename to.
+        to: String,
+        /// Underlying error.
+        error: std::io::Error,
+    },
+    /// Block file name not in the format `min_max.csv`.
+    BlockFileNameInvalid {
+        /// Name of the file in the transaction block store.
+        file_name: OsString,
+    },
+    /// Error writing transaction to a block file.
+    BlockTxWrite(csv_async::Error),
+    /// Dispute transaction not found in transaction block files.
+    DisputeTxNotFound {
+        /// Transaction ID that was disputed.
+        tx: TxId,
+    },
+    /// Account does not have sufficient funds to hold in a dispute.
+    DisputeInsufficientAvailable {
+        /// Client ID.
+        client: ClientId,
+        /// Transaction ID that was disputed.
+        tx: TxId,
+        /// Amount client has available.
+        available: Decimal,
+        /// Amount that is disputed.
+        amount: Decimal,
+    },
+    /// Account held amount would overflow for dispute.
+    DisputeHeldOverflow {
+        /// Client ID.
+        client: ClientId,
+        /// Transaction ID that was disputed.
+        tx: TxId,
+        /// Amount client has held.
+        held: Decimal,
+        /// Amount that is disputed.
+        amount: Decimal,
+    },
+    /// Account does not have sufficient funds to unhold in a dispute
+    /// resolution.
+    ResolveInsufficientHeld {
+        /// Client ID.
+        client: ClientId,
+        /// Transaction ID that was disputed.
+        tx: TxId,
+        /// Amount client has held.
+        held: Decimal,
+        /// Amount that is disputed.
+        amount: Decimal,
+    },
+    /// Account available amount would overflow for dispute resolution.
+    ResolveAvailableOverflow {
+        /// Client ID.
+        client: ClientId,
+        /// Transaction ID that was disputed.
+        tx: TxId,
+        /// Amount client has available.
+        available: Decimal,
+        /// Amount that is disputed.
+        amount: Decimal,
+    },
+    /// Account does not have sufficient funds to unhold in a dispute
+    /// chargeback.
+    ChargebackInsufficientHeld {
+        /// Client ID.
+        client: ClientId,
+        /// Transaction ID that was disputed.
+        tx: TxId,
+        /// Amount client has held.
+        held: Decimal,
+        /// Amount that is disputed.
+        amount: Decimal,
+    },
     /// Error opening transactions CSV.
     TransactCsvOpen {
         /// Path to the CSV.
         path: PathBuf,
         /// Underlying CSV error.
-        error: csv::Error,
+        error: std::io::Error,
     },
     /// Error deserializing a transaction.
-    TransactionDeserialize(csv::Error),
+    TransactionDeserialize(csv_async::Error),
     /// Deposit amount not provided in transaction record.
     DepositAmountNotProvided {
         /// Client ID.
@@ -64,7 +154,7 @@ pub enum Error {
         amount: Decimal,
     },
     /// Error writing output.
-    OutputWrite(csv::Error),
+    OutputWrite(csv_async::Error),
     /// Error flushing output stream.
     OutputFlush(std::io::Error),
 }
@@ -72,6 +162,79 @@ pub enum Error {
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::BlockStoreDirCreate(_) => write!(
+                f,
+                "Error creating directory to store transaction block files."
+            ),
+            Self::BlockStoreDirRead(_) => write!(
+                f,
+                "Error reading block store directory to find transaction."
+            ),
+            Self::BlockFileCreate(_) => write!(f, "Error creating transaction block file."),
+            Self::BlockFileFlush(_) => write!(f, "Error flushing output stream for a block file."),
+            Self::BlockFileRename { from, to, .. } => {
+                write!(f, "Error renaming block file from `{from}` to `{to}`.")
+            }
+            Self::BlockFileNameInvalid { file_name } => write!(
+                f,
+                "Block file name not in the format `min_max.csv`: {}",
+                Path::new(file_name).display()
+            ),
+            Self::BlockTxWrite(_) => write!(f, "Error writing transaction to a block file."),
+            Self::DisputeTxNotFound { tx } => write!(
+                f,
+                "Dispute transaction not found in transaction block files: {tx}.",
+            ),
+            Self::DisputeInsufficientAvailable {
+                client,
+                tx,
+                available,
+                amount,
+            } => write!(
+                f,
+                "Account does not have sufficient funds to hold in a dispute:\n\
+                 client {client}, transaction {tx}, available {available}, amount {amount}.",
+            ),
+            Self::DisputeHeldOverflow {
+                client,
+                tx,
+                held,
+                amount,
+            } => write!(
+                f,
+                "Account held amount would overflow for dispute:\n\
+                 client {client}, transaction {tx}, held {held}, amount {amount}.",
+            ),
+            Self::ResolveInsufficientHeld {
+                client,
+                tx,
+                held,
+                amount,
+            } => write!(
+                f,
+                "Account does not have sufficient funds to unhold in a dispute resolution:\n\
+                 client {client}, transaction {tx}, held {held}, amount {amount}.",
+            ),
+            Self::ResolveAvailableOverflow {
+                client,
+                tx,
+                available,
+                amount,
+            } => write!(
+                f,
+                "Account available amount would overflow for dispute resolution:\n\
+                 client {client}, transaction {tx}, available {available}, amount {amount}.",
+            ),
+            Self::ChargebackInsufficientHeld {
+                client,
+                tx,
+                held,
+                amount,
+            } => write!(
+                f,
+                "Account does not have sufficient funds to unhold in a dispute chargeback:\n\
+                 client {client}, transaction {tx}, held {held}, amount {amount}.",
+            ),
             Self::TransactCsvOpen { path, .. } => {
                 write!(f, "Error opening transactions CSV: {}", path.display())
             }
@@ -82,7 +245,7 @@ impl fmt::Display for Error {
             ),
             Self::DepositAmountNegative { client, tx, amount } => write!(
                 f,
-                "Deposit transaction amount is negative: client {client}, transaction {tx}, amount: {amount}."
+                "Deposit transaction amount is negative: client {client}, transaction {tx}, amount {amount}."
             ),
             Self::DepositAvailableOverflow { client, tx } => write!(
                 f,
@@ -98,7 +261,7 @@ impl fmt::Display for Error {
             ),
             Self::WithdrawalAmountNegative { client, tx, amount } => write!(
                 f,
-                "Withdrawal transaction amount is negative: client {client}, transaction {tx}, amount: {amount}."
+                "Withdrawal transaction amount is negative: client {client}, transaction {tx}, amount {amount}."
             ),
             Self::OutputWrite(_) => write!(f, "Error writing output"),
             Self::OutputFlush(_) => write!(f, "Error flushing output stream"),
@@ -109,6 +272,19 @@ impl fmt::Display for Error {
 impl std::error::Error for Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
+            Self::BlockStoreDirCreate(error) => Some(error),
+            Self::BlockStoreDirRead(error) => Some(error),
+            Self::BlockFileCreate(error) => Some(error),
+            Self::BlockFileFlush(error) => Some(error),
+            Self::BlockFileRename { error, .. } => Some(error),
+            Self::BlockFileNameInvalid { .. } => None,
+            Self::BlockTxWrite(error) => Some(error),
+            Self::DisputeTxNotFound { .. } => None,
+            Self::DisputeInsufficientAvailable { .. } => None,
+            Self::DisputeHeldOverflow { .. } => None,
+            Self::ResolveInsufficientHeld { .. } => None,
+            Self::ResolveAvailableOverflow { .. } => None,
+            Self::ChargebackInsufficientHeld { .. } => None,
             Self::TransactCsvOpen { error, .. } => Some(error),
             Self::TransactionDeserialize(error) => Some(error),
             Self::DepositAmountNotProvided { .. } => None,

@@ -1,4 +1,4 @@
-use std::{env, io};
+use std::env;
 
 use transact::Error;
 
@@ -10,7 +10,7 @@ fn main() -> Result<(), Error> {
             .build()
             .expect("Failed to initialize tokio runtime");
 
-        rt.block_on(transact::process(file_path.as_ref(), io::stdout()))
+        rt.block_on(transact::process(file_path.as_ref(), tokio::io::stdout()))
     } else {
         eprintln!("This program expects the transactions file as the first argument.");
         std::process::exit(1);

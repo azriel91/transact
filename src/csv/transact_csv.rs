@@ -1,6 +1,7 @@
-use std::{fs::File, path::Path};
+use std::{path::Path, pin::Pin};
 
-use futures::{stream, TryStream, TryStreamExt};
+use futures::{TryStream, TryStreamExt};
+use tokio::fs::File;
 
 use crate::{csv::TxRecord, model::Transaction, Error};
 
@@ -14,38 +15,48 @@ impl TransactCsv {
     /// # Parameters
     ///
     /// * `path`: Path to the transactions CSV file.
-    pub fn stream(path: &Path) -> Result<impl TryStream<Ok = Transaction, Error = Error>, Error> {
-        Self::open(path).map(|csv_reader| {
-            stream::iter(csv_reader.into_deserialize::<TxRecord>())
+    pub async fn stream(
+        path: &Path,
+    ) -> Result<impl TryStream<Ok = Transaction, Error = Error>, Error> {
+        Self::open(path).await.map(|csv_deserializer| {
+            csv_deserializer
+                .into_deserialize::<TxRecord>()
                 .map_err(Error::TransactionDeserialize)
                 .and_then(|tx_record| async { Transaction::try_from(tx_record) })
         })
     }
 
-    /// Returns a [`csv::Reader`] to the transactions CSV.
+    /// Returns a [`csv_async::AsyncDeserializer`] to the transactions CSV.
     ///
     /// # Parameters
     ///
     /// * `path`: Path to the transactions CSV file.
-    fn open(path: &Path) -> Result<csv::Reader<File>, Error> {
-        csv::ReaderBuilder::new()
-            .has_headers(true)
-            .flexible(true) // In case Dispute, Resolve, and Chargeback rows don't contain an empty column
-            .trim(csv::Trim::All)
-            .from_path(path)
+    async fn open(path: &Path) -> Result<csv_async::AsyncDeserializer<File>, Error> {
+        let file = File::open(path)
+            .await
             .map_err(|error| Error::TransactCsvOpen {
                 path: path.to_path_buf(),
                 error,
-            })
+            })?;
+        let deserializer = csv_async::AsyncReaderBuilder::new()
+            .has_headers(true)
+            .flexible(true) // In case Dispute, Resolve, and Chargeback rows don't contain an empty column
+            .trim(csv_async::Trim::All)
+            .create_deserializer(file);
+
+        Ok(deserializer)
     }
 
-    /// Returns a [`csv::Writer`].
-    pub fn csv_writer<'f, W>(out_stream: W) -> csv::Writer<Box<dyn std::io::Write + 'f>>
+    /// Returns a [`csv_async::AsyncWriter`].
+    pub fn csv_writer<'f, W>(
+        out_stream: W,
+    ) -> csv_async::AsyncSerializer<Pin<Box<dyn tokio::io::AsyncWrite + 'f>>>
     where
-        W: std::io::Write + 'f,
+        W: tokio::io::AsyncWrite + Unpin + 'f,
     {
-        csv::WriterBuilder::new()
+        csv_async::AsyncWriterBuilder::new()
             .has_headers(true)
-            .from_writer(Box::new(out_stream))
+            .flexible(true)
+            .create_serializer(Box::pin(out_stream))
     }
 }
