@@ -393,7 +393,9 @@ mod tests {
 
     use super::TxProcessor;
     use crate::{
-        model::{Account, ClientId, Deposit, TxId, Withdrawal},
+        model::{
+            Account, Chargeback, ClientId, Deposit, Dispute, Resolve, Transaction, TxId, Withdrawal,
+        },
         TxBlockStore, TxError,
     };
 
@@ -567,6 +569,308 @@ mod tests {
             Ok(Err(TxError::WithdrawalAmountNegative { client, tx, amount }))
             if client == ClientId::new(1) && tx == TxId::new(2) && amount == dec!(-1.0)
         ));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn dispute_adds_transaction_id_to_disputed_txs_and_holds_funds()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let client = ClientId::new(1);
+        let tx = TxId::new(2);
+        let available = dec!(5.0);
+        let held = dec!(0.0);
+        let amount = dec!(1.0);
+        let mut account = Account::try_new(client, available, held, false, HashSet::new())
+            .expect("Test data invalid.");
+        let deposit = Transaction::from(Deposit::new(client, tx, amount));
+
+        let tx_block_store = &TxBlockStore::try_new().expect("Failed to initialize block store.");
+        tx_block_store.persist_block(&[deposit.clone()]).await?;
+        let tx_processor = TxProcessor::new(tx_block_store);
+        tx_processor.process(&mut account, deposit).await??;
+        tx_processor
+            .handle_dispute(&mut account, Dispute::new(client, tx))
+            .await??;
+
+        let mut disputed_txs_expected = HashSet::new();
+        disputed_txs_expected.insert(tx);
+        let account_expected =
+            Account::try_new(client, available, dec!(1.0), false, disputed_txs_expected)
+                .expect("test_data_invalid");
+        assert_eq!(account_expected, account);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn dispute_ignores_invalid_transaction_ids() -> Result<(), Box<dyn std::error::Error>> {
+        let client = ClientId::new(1);
+        let tx = TxId::new(2);
+        let tx_different = TxId::new(3);
+        let amount = dec!(1.0);
+        let mut account = Account::empty(client);
+        let deposit = Transaction::from(Deposit::new(client, tx, amount));
+
+        let tx_block_store = &TxBlockStore::try_new().expect("Failed to initialize block store.");
+        tx_block_store.persist_block(&[deposit.clone()]).await?;
+        let tx_processor = TxProcessor::new(tx_block_store);
+        tx_processor.process(&mut account, deposit).await??;
+        let process_result = tx_processor
+            .handle_dispute(&mut account, Dispute::new(client, tx_different))
+            .await?;
+
+        assert_eq!(
+            Err(TxError::DisputeTxNotFound { tx: tx_different }),
+            process_result
+        );
+        assert_eq!(&HashSet::new(), account.disputed_txs());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn dispute_ignores_client_mismatch() -> Result<(), Box<dyn std::error::Error>> {
+        let client_one = ClientId::new(1);
+        let client_two = ClientId::new(2);
+        let tx = TxId::new(2);
+        let amount = dec!(1.0);
+        let mut account = Account::empty(client_one);
+        let deposit = Transaction::from(Deposit::new(client_one, tx, amount));
+
+        let tx_block_store = &TxBlockStore::try_new().expect("Failed to initialize block store.");
+        tx_block_store.persist_block(&[deposit.clone()]).await?;
+        let tx_processor = TxProcessor::new(tx_block_store);
+        tx_processor.process(&mut account, deposit).await??;
+        let process_result = tx_processor
+            .handle_dispute(&mut account, Dispute::new(client_two, tx))
+            .await?;
+
+        assert_eq!(
+            Err(TxError::DisputeClientMismatch {
+                tx,
+                dispute_tx_client: client_two,
+                disputed_tx_client: client_one
+            }),
+            process_result
+        );
+        assert_eq!(&HashSet::new(), account.disputed_txs());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn dispute_ignored_when_insufficient_available() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let client = ClientId::new(1);
+        let tx = TxId::new(2);
+        let tx_withdrawal = TxId::new(3);
+        let amount = dec!(1.0);
+        let mut account = Account::empty(client);
+        let deposit = Transaction::from(Deposit::new(client, tx, amount));
+        let withdrawal = Transaction::from(Withdrawal::new(client, tx_withdrawal, amount));
+
+        let tx_block_store = &TxBlockStore::try_new().expect("Failed to initialize block store.");
+        tx_block_store
+            .persist_block(&[deposit.clone(), withdrawal.clone()])
+            .await?;
+        let tx_processor = TxProcessor::new(tx_block_store);
+        tx_processor.process(&mut account, deposit).await??;
+        tx_processor.process(&mut account, withdrawal).await??;
+        let process_result = tx_processor
+            .handle_dispute(&mut account, Dispute::new(client, tx))
+            .await?;
+
+        assert_eq!(
+            Err(TxError::DisputeInsufficientAvailable {
+                client,
+                tx,
+                available: dec!(0.0),
+                amount,
+            }),
+            process_result
+        );
+        assert_eq!(&HashSet::new(), account.disputed_txs());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn resolve_returns_held_funds_to_available() -> Result<(), Box<dyn std::error::Error>> {
+        let client = ClientId::new(1);
+        let tx = TxId::new(2);
+        let available = dec!(5.0);
+        let held = dec!(0.0);
+        let amount = dec!(2.0);
+        let mut account = Account::try_new(client, available, held, false, HashSet::new())
+            .expect("Test data invalid.");
+        let deposit = Transaction::from(Deposit::new(client, tx, amount));
+
+        let tx_block_store = &TxBlockStore::try_new().expect("Failed to initialize block store.");
+        tx_block_store.persist_block(&[deposit.clone()]).await?;
+        let tx_processor = TxProcessor::new(tx_block_store);
+        tx_processor.process(&mut account, deposit).await??;
+        tx_processor
+            .handle_dispute(&mut account, Dispute::new(client, tx))
+            .await??;
+        tx_processor
+            .handle_resolve(&mut account, Resolve::new(client, tx))
+            .await??;
+
+        // Start with 5.0, deposit 2.0, dispute 2.0, resolve 2.0
+        let account_expected =
+            Account::try_new(client, dec!(7.0), dec!(0.0), false, HashSet::new())
+                .expect("test_data_invalid");
+        assert_eq!(account_expected, account);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn resolve_ignored_when_tx_not_disputed() -> Result<(), Box<dyn std::error::Error>> {
+        let client = ClientId::new(1);
+        let tx = TxId::new(2);
+        let tx_different = TxId::new(3);
+        let amount = dec!(1.0);
+        let mut account = Account::empty(client);
+        let deposit = Transaction::from(Deposit::new(client, tx, amount));
+
+        let tx_block_store = &TxBlockStore::try_new().expect("Failed to initialize block store.");
+        tx_block_store.persist_block(&[deposit.clone()]).await?;
+        let tx_processor = TxProcessor::new(tx_block_store);
+        tx_processor.process(&mut account, deposit).await??;
+        let process_result = tx_processor
+            .handle_resolve(&mut account, Resolve::new(client, tx_different))
+            .await?;
+
+        assert_eq!(
+            Err(TxError::ResolveTxNotInDispute {
+                client,
+                tx: tx_different
+            }),
+            process_result
+        );
+        assert_eq!(&HashSet::new(), account.disputed_txs());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn resolve_ignores_client_mismatch() -> Result<(), Box<dyn std::error::Error>> {
+        let client_one = ClientId::new(1);
+        let client_two = ClientId::new(2);
+        let tx = TxId::new(2);
+        let amount = dec!(1.0);
+        let mut account = Account::empty(client_one);
+        let deposit = Transaction::from(Deposit::new(client_one, tx, amount));
+
+        let tx_block_store = &TxBlockStore::try_new().expect("Failed to initialize block store.");
+        tx_block_store.persist_block(&[deposit.clone()]).await?;
+        let tx_processor = TxProcessor::new(tx_block_store);
+        tx_processor.process(&mut account, deposit).await??;
+        tx_processor
+            .handle_dispute(&mut account, Dispute::new(client_one, tx))
+            .await??;
+        let process_result = tx_processor
+            .handle_resolve(&mut account, Resolve::new(client_two, tx))
+            .await?;
+
+        assert_eq!(
+            Err(TxError::ResolveClientMismatch {
+                tx,
+                resolve_tx_client: client_two,
+                disputed_tx_client: client_one
+            }),
+            process_result
+        );
+        let mut disputed_txs_expected = HashSet::new();
+        disputed_txs_expected.insert(tx);
+        assert_eq!(&disputed_txs_expected, account.disputed_txs());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn chargeback_subtracts_held_funds_and_locks_account()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let client = ClientId::new(1);
+        let tx = TxId::new(2);
+        let available = dec!(5.0);
+        let held = dec!(0.0);
+        let amount = dec!(2.0);
+        let mut account = Account::try_new(client, available, held, false, HashSet::new())
+            .expect("Test data invalid.");
+        let deposit = Transaction::from(Deposit::new(client, tx, amount));
+
+        let tx_block_store = &TxBlockStore::try_new().expect("Failed to initialize block store.");
+        tx_block_store.persist_block(&[deposit.clone()]).await?;
+        let tx_processor = TxProcessor::new(tx_block_store);
+        tx_processor.process(&mut account, deposit).await??;
+        tx_processor
+            .handle_dispute(&mut account, Dispute::new(client, tx))
+            .await??;
+        tx_processor
+            .handle_chargeback(&mut account, Chargeback::new(client, tx))
+            .await??;
+
+        // Start with 5.0, deposit 2.0, dispute 2.0, chargeback 2.0
+        let account_expected = Account::try_new(client, dec!(5.0), dec!(0.0), true, HashSet::new())
+            .expect("test_data_invalid");
+        assert_eq!(account_expected, account);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn chargeback_ignored_when_tx_not_disputed() -> Result<(), Box<dyn std::error::Error>> {
+        let client = ClientId::new(1);
+        let tx = TxId::new(2);
+        let tx_different = TxId::new(3);
+        let amount = dec!(1.0);
+        let mut account = Account::empty(client);
+        let deposit = Transaction::from(Deposit::new(client, tx, amount));
+
+        let tx_block_store = &TxBlockStore::try_new().expect("Failed to initialize block store.");
+        tx_block_store.persist_block(&[deposit.clone()]).await?;
+        let tx_processor = TxProcessor::new(tx_block_store);
+        tx_processor.process(&mut account, deposit).await??;
+        let process_result = tx_processor
+            .handle_chargeback(&mut account, Chargeback::new(client, tx_different))
+            .await?;
+
+        assert_eq!(
+            Err(TxError::ChargebackTxNotInDispute {
+                client,
+                tx: tx_different
+            }),
+            process_result
+        );
+        assert_eq!(&HashSet::new(), account.disputed_txs());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn chargeback_ignores_client_mismatch() -> Result<(), Box<dyn std::error::Error>> {
+        let client_one = ClientId::new(1);
+        let client_two = ClientId::new(2);
+        let tx = TxId::new(2);
+        let amount = dec!(1.0);
+        let mut account = Account::empty(client_one);
+        let deposit = Transaction::from(Deposit::new(client_one, tx, amount));
+
+        let tx_block_store = &TxBlockStore::try_new().expect("Failed to initialize block store.");
+        tx_block_store.persist_block(&[deposit.clone()]).await?;
+        let tx_processor = TxProcessor::new(tx_block_store);
+        tx_processor.process(&mut account, deposit).await??;
+        tx_processor
+            .handle_dispute(&mut account, Dispute::new(client_one, tx))
+            .await??;
+        let process_result = tx_processor
+            .handle_chargeback(&mut account, Chargeback::new(client_two, tx))
+            .await?;
+
+        assert_eq!(
+            Err(TxError::ChargebackClientMismatch {
+                tx,
+                chargeback_tx_client: client_two,
+                disputed_tx_client: client_one
+            }),
+            process_result
+        );
+        let mut disputed_txs_expected = HashSet::new();
+        disputed_txs_expected.insert(tx);
+        assert_eq!(&disputed_txs_expected, account.disputed_txs());
         Ok(())
     }
 }

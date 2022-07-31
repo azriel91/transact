@@ -19,5 +19,5 @@ rust_decimal_macros = "1.25"
 futures = "0.3.21"
 serde = { version = "1.0.140", features = ["derive"] }
 tempfile = "3.3.0"
-tokio = { version = "1.20.1", features = ["io-std", "io-util", "rt"] }
+tokio = { version = "1.20.1", features = ["io-std", "io-util", "macros", "rt"] }
 tokio-stream = { version = "0.1.9", features = ["fs"] }
