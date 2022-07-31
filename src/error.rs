@@ -4,11 +4,9 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use rust_decimal::Decimal;
-
 use crate::model::{ClientId, TxId};
 
-/// Errors that happen during processing.
+/// Errors relating to running the application / corrupt data.
 #[derive(Debug)]
 pub enum Error {
     /// Error creating directory to store transaction block files.
@@ -35,68 +33,6 @@ pub enum Error {
     },
     /// Error writing transaction to a block file.
     BlockTxWrite(csv_async::Error),
-    /// Dispute transaction not found in transaction block files.
-    DisputeTxNotFound {
-        /// Transaction ID that was disputed.
-        tx: TxId,
-    },
-    /// Account does not have sufficient funds to hold in a dispute.
-    DisputeInsufficientAvailable {
-        /// Client ID.
-        client: ClientId,
-        /// Transaction ID that was disputed.
-        tx: TxId,
-        /// Amount client has available.
-        available: Decimal,
-        /// Amount that is disputed.
-        amount: Decimal,
-    },
-    /// Account held amount would overflow for dispute.
-    DisputeHeldOverflow {
-        /// Client ID.
-        client: ClientId,
-        /// Transaction ID that was disputed.
-        tx: TxId,
-        /// Amount client has held.
-        held: Decimal,
-        /// Amount that is disputed.
-        amount: Decimal,
-    },
-    /// Account does not have sufficient funds to unhold in a dispute
-    /// resolution.
-    ResolveInsufficientHeld {
-        /// Client ID.
-        client: ClientId,
-        /// Transaction ID that was disputed.
-        tx: TxId,
-        /// Amount client has held.
-        held: Decimal,
-        /// Amount that is disputed.
-        amount: Decimal,
-    },
-    /// Account available amount would overflow for dispute resolution.
-    ResolveAvailableOverflow {
-        /// Client ID.
-        client: ClientId,
-        /// Transaction ID that was disputed.
-        tx: TxId,
-        /// Amount client has available.
-        available: Decimal,
-        /// Amount that is disputed.
-        amount: Decimal,
-    },
-    /// Account does not have sufficient funds to unhold in a dispute
-    /// chargeback.
-    ChargebackInsufficientHeld {
-        /// Client ID.
-        client: ClientId,
-        /// Transaction ID that was disputed.
-        tx: TxId,
-        /// Amount client has held.
-        held: Decimal,
-        /// Amount that is disputed.
-        amount: Decimal,
-    },
     /// Error opening transactions CSV.
     TransactCsvOpen {
         /// Path to the CSV.
@@ -113,45 +49,12 @@ pub enum Error {
         /// Transaction ID.
         tx: TxId,
     },
-    /// Deposit transaction amount is negative.
-    DepositAmountNegative {
-        /// Client ID.
-        client: ClientId,
-        /// Transaction ID.
-        tx: TxId,
-        /// Amount in the transaction.
-        amount: Decimal,
-    },
-    /// Deposit transaction would cause an account's available funds to
-    /// overflow.
-    DepositAvailableOverflow {
-        /// Client ID.
-        client: ClientId,
-        /// Transaction ID.
-        tx: TxId,
-    },
-    /// Deposit transaction would cause an account's total funds to overflow.
-    DepositTotalOverflow {
-        /// Client ID.
-        client: ClientId,
-        /// Transaction ID.
-        tx: TxId,
-    },
     /// Withdrawal amount not provided in transaction record.
     WithdrawalAmountNotProvided {
         /// Client ID.
         client: ClientId,
         /// Transaction ID.
         tx: TxId,
-    },
-    /// Withdrawal transaction amount is negative.
-    WithdrawalAmountNegative {
-        /// Client ID.
-        client: ClientId,
-        /// Transaction ID.
-        tx: TxId,
-        /// Amount in the transaction.
-        amount: Decimal,
     },
     /// Error writing output.
     OutputWrite(csv_async::Error),
@@ -181,60 +84,6 @@ impl fmt::Display for Error {
                 Path::new(file_name).display()
             ),
             Self::BlockTxWrite(_) => write!(f, "Error writing transaction to a block file."),
-            Self::DisputeTxNotFound { tx } => write!(
-                f,
-                "Dispute transaction not found in transaction block files: {tx}.",
-            ),
-            Self::DisputeInsufficientAvailable {
-                client,
-                tx,
-                available,
-                amount,
-            } => write!(
-                f,
-                "Account does not have sufficient funds to hold in a dispute:\n\
-                 client {client}, transaction {tx}, available {available}, amount {amount}.",
-            ),
-            Self::DisputeHeldOverflow {
-                client,
-                tx,
-                held,
-                amount,
-            } => write!(
-                f,
-                "Account held amount would overflow for dispute:\n\
-                 client {client}, transaction {tx}, held {held}, amount {amount}.",
-            ),
-            Self::ResolveInsufficientHeld {
-                client,
-                tx,
-                held,
-                amount,
-            } => write!(
-                f,
-                "Account does not have sufficient funds to unhold in a dispute resolution:\n\
-                 client {client}, transaction {tx}, held {held}, amount {amount}.",
-            ),
-            Self::ResolveAvailableOverflow {
-                client,
-                tx,
-                available,
-                amount,
-            } => write!(
-                f,
-                "Account available amount would overflow for dispute resolution:\n\
-                 client {client}, transaction {tx}, available {available}, amount {amount}.",
-            ),
-            Self::ChargebackInsufficientHeld {
-                client,
-                tx,
-                held,
-                amount,
-            } => write!(
-                f,
-                "Account does not have sufficient funds to unhold in a dispute chargeback:\n\
-                 client {client}, transaction {tx}, held {held}, amount {amount}.",
-            ),
             Self::TransactCsvOpen { path, .. } => {
                 write!(f, "Error opening transactions CSV: {}", path.display())
             }
@@ -243,25 +92,9 @@ impl fmt::Display for Error {
                 f,
                 "Deposit amount not provided in transaction record for client {client}, transaction {tx}."
             ),
-            Self::DepositAmountNegative { client, tx, amount } => write!(
-                f,
-                "Deposit transaction amount is negative: client {client}, transaction {tx}, amount {amount}."
-            ),
-            Self::DepositAvailableOverflow { client, tx } => write!(
-                f,
-                "Deposit transaction would cause an account's available funds to overflow: client {client}, transaction {tx}."
-            ),
-            Self::DepositTotalOverflow { client, tx } => write!(
-                f,
-                "A deposit transaction would cause an account's total funds to overflow: client {client}, transaction {tx}."
-            ),
             Self::WithdrawalAmountNotProvided { client, tx } => write!(
                 f,
                 "Withdrawal amount not provided in transaction record for client {client}, transaction {tx}."
-            ),
-            Self::WithdrawalAmountNegative { client, tx, amount } => write!(
-                f,
-                "Withdrawal transaction amount is negative: client {client}, transaction {tx}, amount {amount}."
             ),
             Self::OutputWrite(_) => write!(f, "Error writing output"),
             Self::OutputFlush(_) => write!(f, "Error flushing output stream"),
@@ -279,20 +112,10 @@ impl std::error::Error for Error {
             Self::BlockFileRename { error, .. } => Some(error),
             Self::BlockFileNameInvalid { .. } => None,
             Self::BlockTxWrite(error) => Some(error),
-            Self::DisputeTxNotFound { .. } => None,
-            Self::DisputeInsufficientAvailable { .. } => None,
-            Self::DisputeHeldOverflow { .. } => None,
-            Self::ResolveInsufficientHeld { .. } => None,
-            Self::ResolveAvailableOverflow { .. } => None,
-            Self::ChargebackInsufficientHeld { .. } => None,
             Self::TransactCsvOpen { error, .. } => Some(error),
             Self::TransactionDeserialize(error) => Some(error),
             Self::DepositAmountNotProvided { .. } => None,
-            Self::DepositAmountNegative { .. } => None,
-            Self::DepositAvailableOverflow { .. } => None,
-            Self::DepositTotalOverflow { .. } => None,
             Self::WithdrawalAmountNotProvided { .. } => None,
-            Self::WithdrawalAmountNegative { .. } => None,
             Self::OutputWrite(error) => Some(error),
             Self::OutputFlush(error) => Some(error),
         }
