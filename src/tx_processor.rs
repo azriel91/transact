@@ -109,6 +109,11 @@ impl<'block_store> TxProcessor<'block_store> {
     }
 
     async fn handle_dispute(&self, account: &mut Account, dispute: Dispute) -> Result<(), Error> {
+        if account.client() != dispute.client() {
+            // Only allow a client to dispute transactions to their own account.
+            return Ok(());
+        }
+
         let transaction = self.block_store.find_transaction(dispute.tx()).await;
         match transaction {
             Ok(transaction) => match transaction {
@@ -168,6 +173,11 @@ impl<'block_store> TxProcessor<'block_store> {
     }
 
     async fn handle_resolve(&self, account: &mut Account, resolve: Resolve) -> Result<(), Error> {
+        if account.client() != resolve.client() {
+            // Only allow a client to dispute transactions to their own account.
+            return Ok(());
+        }
+
         let resolve_tx = resolve.tx();
         let disputed_tx_pos = account
             .disputed_txs()
@@ -243,6 +253,11 @@ impl<'block_store> TxProcessor<'block_store> {
         account: &mut Account,
         chargeback: Chargeback,
     ) -> Result<(), Error> {
+        if account.client() != chargeback.client() {
+            // Only allow a client to dispute transactions to their own account.
+            return Ok(());
+        }
+
         let chargeback_tx = chargeback.tx();
         let disputed_tx_pos = account
             .disputed_txs()
