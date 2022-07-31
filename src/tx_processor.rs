@@ -58,7 +58,7 @@ impl TxProcessor {
                 amount: withdrawal_amount,
             })
         } else if withdrawal_amount.cmp(&available) == Ordering::Greater {
-            // Not enough funds, don't change the account values.
+            // Not enough amount, don't change the account values.
             Ok(())
         } else {
             let available_next = available.saturating_sub(withdrawal.amount());
@@ -98,12 +98,12 @@ mod tests {
 
     use super::TxProcessor;
     use crate::{
-        model::{Account, ClientId, Deposit, TxId},
+        model::{Account, ClientId, Deposit, TxId, Withdrawal},
         Error,
     };
 
     #[test]
-    fn deposit_positive_amount() -> Result<(), Error> {
+    fn deposit_positive_amount_adds_available_amount() -> Result<(), Error> {
         let client = ClientId::new(1);
         let tx = TxId::new(2);
         let amount = dec!(1.0);
@@ -166,6 +166,74 @@ mod tests {
             result,
             Err(Error::DepositTotalOverflow { client, tx })
             if client == ClientId::new(1) && tx == TxId::new(2)
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn withdrawal_positive_amount_with_sufficient_extra_amount_subtracts_amount()
+    -> Result<(), Error> {
+        let client = ClientId::new(1);
+        let tx = TxId::new(2);
+        let amount = dec!(1.0);
+        let mut account =
+            Account::try_new(client, dec!(2.0), dec!(0.0), false).expect("Test data invalid.");
+
+        TxProcessor::handle_withdrawal(&mut account, Withdrawal::new(client, tx, amount))?;
+
+        let account_expected =
+            Account::try_new(client, dec!(1.0), dec!(0.0), false).expect("Test data invalid.");
+        assert_eq!(account_expected, account);
+        Ok(())
+    }
+
+    #[test]
+    fn withdrawal_positive_amount_with_sufficient_exact_amount_subtracts_amount()
+    -> Result<(), Error> {
+        let client = ClientId::new(1);
+        let tx = TxId::new(2);
+        let amount = dec!(1.0);
+        let mut account =
+            Account::try_new(client, dec!(1.0), dec!(0.0), false).expect("Test data invalid.");
+
+        TxProcessor::handle_withdrawal(&mut account, Withdrawal::new(client, tx, amount))?;
+
+        let account_expected =
+            Account::try_new(client, dec!(0.0), dec!(0.0), false).expect("Test data invalid.");
+        assert_eq!(account_expected, account);
+        Ok(())
+    }
+
+    #[test]
+    fn withdrawal_positive_amount_with_insufficient_amount_does_nothing() -> Result<(), Error> {
+        let client = ClientId::new(1);
+        let tx = TxId::new(2);
+        let amount = dec!(2.0);
+        let mut account =
+            Account::try_new(client, dec!(1.0), dec!(0.0), false).expect("Test data invalid.");
+
+        TxProcessor::handle_withdrawal(&mut account, Withdrawal::new(client, tx, amount))?;
+
+        let account_expected =
+            Account::try_new(client, dec!(1.0), dec!(0.0), false).expect("Test data invalid.");
+        assert_eq!(account_expected, account);
+        Ok(())
+    }
+
+    #[test]
+    fn withdrawal_negative_amount_returns_err() -> Result<(), Error> {
+        let client = ClientId::new(1);
+        let tx = TxId::new(2);
+        let amount = dec!(-1.0);
+        let mut account = Account::empty(client);
+
+        let result =
+            TxProcessor::handle_withdrawal(&mut account, Withdrawal::new(client, tx, amount));
+
+        assert!(matches!(
+            result,
+            Err(Error::WithdrawalAmountNegative { client, tx, amount })
+            if client == ClientId::new(1) && tx == TxId::new(2) && amount == dec!(-1.0)
         ));
         Ok(())
     }
