@@ -94,10 +94,53 @@ impl<'block_store> TxProcessor<'block_store> {
         }
     }
 
-    async fn handle_dispute(&self, _account: &mut Account, dispute: Dispute) -> Result<(), Error> {
+    async fn handle_dispute(&self, account: &mut Account, dispute: Dispute) -> Result<(), Error> {
         let transaction = self.block_store.find_transaction(dispute.tx()).await;
         match transaction {
-            Ok(_transaction) => Ok(()),
+            Ok(transaction) => match transaction {
+                Transaction::Withdrawal(withdrawal) => {
+                    let client = account.client();
+                    let tx = withdrawal.tx();
+                    let available = account.available();
+                    let held = account.held();
+                    let amount = withdrawal.amount();
+
+                    if amount.cmp(&available) == Ordering::Greater {
+                        // Not enough available to hold.
+                        return Err(Error::DisputeInsufficientAvailable {
+                            client,
+                            tx,
+                            available,
+                            amount,
+                        });
+                    }
+
+                    // never negative, as we've done the comparison above
+                    let available_next = available.saturating_sub(withdrawal.amount());
+
+                    let held_next = held.checked_add(amount).ok_or(Error::DisputeHeldOverflow {
+                        client,
+                        tx,
+                        held,
+                        amount,
+                    })?;
+
+                    let account_updated = Account::try_new(
+                        client,
+                        available_next,
+                        held_next,
+                        account.locked(),
+                    )
+                    .expect("Overflow impossible: available and held amounts should equal previous total.");
+
+                    *account = account_updated;
+
+                    Ok(())
+                }
+                _ => unreachable!(
+                    "Only withdrawals may be disputed -- see `TxBlockStore::find_transaction`."
+                ),
+            },
             Err(Error::DisputeTxNotFound { .. }) => {
                 // Safe to ignore, according to spec
                 Ok(())

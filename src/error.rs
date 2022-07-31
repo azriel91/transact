@@ -40,6 +40,28 @@ pub enum Error {
         /// Transaction ID that was disputed.
         tx: TxId,
     },
+    /// Account does not have sufficient funds to hold in a dispute.
+    DisputeInsufficientAvailable {
+        /// Client ID.
+        client: ClientId,
+        /// Transaction ID that was disputed.
+        tx: TxId,
+        /// Amount client has available.
+        available: Decimal,
+        /// Amount that is disputed.
+        amount: Decimal,
+    },
+    /// Account held amount would overflow for dispute.
+    DisputeHeldOverflow {
+        /// Client ID.
+        client: ClientId,
+        /// Transaction ID that was disputed.
+        tx: TxId,
+        /// Amount client has held.
+        held: Decimal,
+        /// Amount that is disputed.
+        amount: Decimal,
+    },
     /// Error opening transactions CSV.
     TransactCsvOpen {
         /// Path to the CSV.
@@ -128,6 +150,26 @@ impl fmt::Display for Error {
                 f,
                 "Dispute transaction not found in transaction block files: {tx}.",
             ),
+            Self::DisputeInsufficientAvailable {
+                client,
+                tx,
+                available,
+                amount,
+            } => write!(
+                f,
+                "Account does not have sufficient funds to hold in a dispute:\n\
+                 client {client}, transaction {tx}, available {available}, amount {amount}.",
+            ),
+            Self::DisputeHeldOverflow {
+                client,
+                tx,
+                held,
+                amount,
+            } => write!(
+                f,
+                "Account held amount would overflow for dispute:\n\
+                 client {client}, transaction {tx}, held {held}, amount {amount}.",
+            ),
             Self::TransactCsvOpen { path, .. } => {
                 write!(f, "Error opening transactions CSV: {}", path.display())
             }
@@ -138,7 +180,7 @@ impl fmt::Display for Error {
             ),
             Self::DepositAmountNegative { client, tx, amount } => write!(
                 f,
-                "Deposit transaction amount is negative: client {client}, transaction {tx}, amount: {amount}."
+                "Deposit transaction amount is negative: client {client}, transaction {tx}, amount {amount}."
             ),
             Self::DepositAvailableOverflow { client, tx } => write!(
                 f,
@@ -154,7 +196,7 @@ impl fmt::Display for Error {
             ),
             Self::WithdrawalAmountNegative { client, tx, amount } => write!(
                 f,
-                "Withdrawal transaction amount is negative: client {client}, transaction {tx}, amount: {amount}."
+                "Withdrawal transaction amount is negative: client {client}, transaction {tx}, amount {amount}."
             ),
             Self::OutputWrite(_) => write!(f, "Error writing output"),
             Self::OutputFlush(_) => write!(f, "Error flushing output stream"),
@@ -173,6 +215,8 @@ impl std::error::Error for Error {
             Self::BlockFileNameInvalid { .. } => None,
             Self::BlockTxWrite(error) => Some(error),
             Self::DisputeTxNotFound { .. } => None,
+            Self::DisputeInsufficientAvailable { .. } => None,
+            Self::DisputeHeldOverflow { .. } => None,
             Self::TransactCsvOpen { error, .. } => Some(error),
             Self::TransactionDeserialize(error) => Some(error),
             Self::DepositAmountNotProvided { .. } => None,
