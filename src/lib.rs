@@ -13,19 +13,25 @@ pub use crate::error::Error;
 use std::path::Path;
 
 use futures::{
-    stream::{self, TryStreamExt},
+    stream::{self, TryChunksError, TryStreamExt},
     StreamExt,
 };
 
 use crate::{
     csv::TransactCsv,
-    model::{Account, Accounts},
+    model::{Account, Accounts, Transaction},
     tx_processor::TxProcessor,
 };
 
 mod csv;
 mod error;
 mod tx_processor;
+
+/// Number of transactions to store per transaction file.
+///
+/// These will be re-read to discover a transaction's amount when processing
+/// disputed transactions.
+const TX_BLOCK_SIZE: usize = 10000;
 
 /// Processes transactions and outputs them to the given stream.
 pub async fn process<W>(path: &Path, out_stream: W) -> Result<(), Error>
@@ -34,6 +40,21 @@ where
 {
     let transactions = TransactCsv::stream(path).await?;
     let accounts = transactions
+        .try_chunks(TX_BLOCK_SIZE)
+        .and_then(|transactions| async move {
+            persist_block(&transactions)
+                .await
+                .map_err(|e| TryChunksError(transactions.clone(), e))?;
+
+            let stream = stream::iter(transactions.into_iter())
+                .map(Result::<_, Error>::Ok)
+                .map_err(|e| TryChunksError(Vec::new(), e));
+
+            Ok(stream)
+        })
+        .try_flatten()
+        // drop transactions when encountering an error
+        .map_err(|TryChunksError(_transactions, e)| e)
         .try_fold(Accounts::new(), |mut accounts, transaction| async move {
             let account = accounts
                 .entry(transaction.client())
@@ -61,6 +82,14 @@ where
         .await?;
 
     writer.flush().await.map_err(Error::OutputFlush)?;
+
+    Ok(())
+}
+
+async fn persist_block(_transactions: &[Transaction]) -> Result<(), Error> {
+    // find smallest and largest transaction id
+    // map to tx,amt
+    // save as min_max.csv
 
     Ok(())
 }
