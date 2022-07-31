@@ -7,6 +7,23 @@ use crate::model::{ClientId, TxId};
 /// Errors that happen during processing.
 #[derive(Debug)]
 pub enum Error {
+    /// Error creating directory to store transaction block files.
+    BlockStoreDirCreate(std::io::Error),
+    /// Error creating transaction block file.
+    BlockFileCreate(std::io::Error),
+    /// Error flushing output stream for a block file.
+    BlockFileFlush(std::io::Error),
+    /// Error flushing output stream for a block file.
+    BlockFileRename {
+        /// File name to rename from.
+        from: String,
+        /// File name to rename to.
+        to: String,
+        /// Underlying error.
+        error: std::io::Error,
+    },
+    /// Error writing transaction to a block file.
+    BlockTxWrite(csv_async::Error),
     /// Error opening transactions CSV.
     TransactCsvOpen {
         /// Path to the CSV.
@@ -72,6 +89,16 @@ pub enum Error {
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::BlockStoreDirCreate(_) => write!(
+                f,
+                "Error creating directory to store transaction block files."
+            ),
+            Self::BlockFileCreate(_) => write!(f, "Error creating transaction block file."),
+            Self::BlockFileFlush(_) => write!(f, "Error flushing output stream for a block file."),
+            Self::BlockFileRename { from, to, .. } => {
+                write!(f, "Error renaming block file from `{from}` to `{to}`.")
+            }
+            Self::BlockTxWrite(_) => write!(f, "Error writing transaction to a block file."),
             Self::TransactCsvOpen { path, .. } => {
                 write!(f, "Error opening transactions CSV: {}", path.display())
             }
@@ -109,6 +136,11 @@ impl fmt::Display for Error {
 impl std::error::Error for Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
+            Self::BlockStoreDirCreate(error) => Some(error),
+            Self::BlockFileCreate(error) => Some(error),
+            Self::BlockFileFlush(error) => Some(error),
+            Self::BlockFileRename { error, .. } => Some(error),
+            Self::BlockTxWrite(error) => Some(error),
             Self::TransactCsvOpen { error, .. } => Some(error),
             Self::TransactionDeserialize(error) => Some(error),
             Self::DepositAmountNotProvided { .. } => None,

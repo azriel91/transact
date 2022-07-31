@@ -56,6 +56,7 @@ impl TransactCsv {
     {
         csv_async::AsyncWriterBuilder::new()
             .has_headers(true)
+            .flexible(true)
             .create_serializer(Box::pin(out_stream))
     }
 }

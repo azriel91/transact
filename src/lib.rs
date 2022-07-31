@@ -19,12 +19,14 @@ use futures::{
 
 use crate::{
     csv::TransactCsv,
-    model::{Account, Accounts, Transaction},
+    model::{Account, Accounts},
+    tx_block_store::TxBlockStore,
     tx_processor::TxProcessor,
 };
 
 mod csv;
 mod error;
+mod tx_block_store;
 mod tx_processor;
 
 /// Number of transactions to store per transaction file.
@@ -38,11 +40,13 @@ pub async fn process<W>(path: &Path, out_stream: W) -> Result<(), Error>
 where
     W: tokio::io::AsyncWrite + Unpin,
 {
+    let tx_block_store = &TxBlockStore::try_new()?;
     let transactions = TransactCsv::stream(path).await?;
     let accounts = transactions
         .try_chunks(TX_BLOCK_SIZE)
         .and_then(|transactions| async move {
-            persist_block(&transactions)
+            tx_block_store
+                .persist_block(&transactions)
                 .await
                 .map_err(|e| TryChunksError(transactions.clone(), e))?;
 
@@ -82,14 +86,6 @@ where
         .await?;
 
     writer.flush().await.map_err(Error::OutputFlush)?;
-
-    Ok(())
-}
-
-async fn persist_block(_transactions: &[Transaction]) -> Result<(), Error> {
-    // find smallest and largest transaction id
-    // map to tx,amt
-    // save as min_max.csv
 
     Ok(())
 }
