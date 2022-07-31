@@ -28,7 +28,7 @@ impl<'block_store> TxProcessor<'block_store> {
             Transaction::Deposit(deposit) => self.handle_deposit(account, deposit),
             Transaction::Withdrawal(withdrawal) => self.handle_withdrawal(account, withdrawal),
             Transaction::Dispute(dispute) => self.handle_dispute(account, dispute).await,
-            Transaction::Resolve(resolve) => self.handle_resolve(account, resolve),
+            Transaction::Resolve(resolve) => self.handle_resolve(account, resolve).await,
             Transaction::Chargeback(chargeback) => self.handle_chargeback(account, chargeback),
         }
     }
@@ -149,8 +149,63 @@ impl<'block_store> TxProcessor<'block_store> {
         }
     }
 
-    fn handle_resolve(&self, _account: &mut Account, _resolve: Resolve) -> Result<(), Error> {
-        todo!()
+    async fn handle_resolve(&self, account: &mut Account, resolve: Resolve) -> Result<(), Error> {
+        // TODO: Only process resolve transactions iff there is an open dispute.
+        let transaction = self.block_store.find_transaction(resolve.tx()).await;
+        match transaction {
+            Ok(transaction) => match transaction {
+                Transaction::Withdrawal(withdrawal) => {
+                    let client = account.client();
+                    let tx = withdrawal.tx();
+                    let available = account.available();
+                    let held = account.held();
+                    let amount = withdrawal.amount();
+
+                    if amount.cmp(&held) == Ordering::Greater {
+                        // Not enough held to subtract.
+                        return Err(Error::ResolveInsufficientHeld {
+                            client,
+                            tx,
+                            held,
+                            amount,
+                        });
+                    }
+
+                    // never negative, as we've done the comparison above
+                    let held_next = held.saturating_sub(withdrawal.amount());
+
+                    let available_next =
+                        available
+                            .checked_add(amount)
+                            .ok_or(Error::ResolveAvailableOverflow {
+                                client,
+                                tx,
+                                available,
+                                amount,
+                            })?;
+
+                    let account_updated = Account::try_new(
+                        client,
+                        available_next,
+                        held_next,
+                        account.locked(),
+                    )
+                    .expect("Overflow impossible: available and held amounts should equal previous total.");
+
+                    *account = account_updated;
+
+                    Ok(())
+                }
+                _ => unreachable!(
+                    "Only withdrawals may be disputed -- see `TxBlockStore::find_transaction`."
+                ),
+            },
+            Err(Error::DisputeTxNotFound { .. }) => {
+                // Safe to ignore, according to spec
+                Ok(())
+            }
+            Err(e) => Err(e),
+        }
     }
 
     fn handle_chargeback(

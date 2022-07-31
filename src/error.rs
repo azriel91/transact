@@ -62,6 +62,29 @@ pub enum Error {
         /// Amount that is disputed.
         amount: Decimal,
     },
+    /// Account does not have sufficient funds to unhold in a dispute
+    /// resolution.
+    ResolveInsufficientHeld {
+        /// Client ID.
+        client: ClientId,
+        /// Transaction ID that was disputed.
+        tx: TxId,
+        /// Amount client has held.
+        held: Decimal,
+        /// Amount that is disputed.
+        amount: Decimal,
+    },
+    /// Account available amount would overflow for dispute resolution.
+    ResolveAvailableOverflow {
+        /// Client ID.
+        client: ClientId,
+        /// Transaction ID that was disputed.
+        tx: TxId,
+        /// Amount client has available.
+        available: Decimal,
+        /// Amount that is disputed.
+        amount: Decimal,
+    },
     /// Error opening transactions CSV.
     TransactCsvOpen {
         /// Path to the CSV.
@@ -170,6 +193,26 @@ impl fmt::Display for Error {
                 "Account held amount would overflow for dispute:\n\
                  client {client}, transaction {tx}, held {held}, amount {amount}.",
             ),
+            Self::ResolveInsufficientHeld {
+                client,
+                tx,
+                held,
+                amount,
+            } => write!(
+                f,
+                "Account does not have sufficient funds to unhold in a dispute resolution:\n\
+                 client {client}, transaction {tx}, held {held}, amount {amount}.",
+            ),
+            Self::ResolveAvailableOverflow {
+                client,
+                tx,
+                available,
+                amount,
+            } => write!(
+                f,
+                "Account available amount would overflow for dispute resolution:\n\
+                 client {client}, transaction {tx}, available {available}, amount {amount}.",
+            ),
             Self::TransactCsvOpen { path, .. } => {
                 write!(f, "Error opening transactions CSV: {}", path.display())
             }
@@ -217,6 +260,8 @@ impl std::error::Error for Error {
             Self::DisputeTxNotFound { .. } => None,
             Self::DisputeInsufficientAvailable { .. } => None,
             Self::DisputeHeldOverflow { .. } => None,
+            Self::ResolveInsufficientHeld { .. } => None,
+            Self::ResolveAvailableOverflow { .. } => None,
             Self::TransactCsvOpen { error, .. } => Some(error),
             Self::TransactionDeserialize(error) => Some(error),
             Self::DepositAmountNotProvided { .. } => None,
