@@ -94,12 +94,16 @@ impl<'block_store> TxProcessor<'block_store> {
         }
     }
 
-    async fn handle_dispute(&self, account: &mut Account, dispute: Dispute) -> Result<(), Error> {
-        let transaction = self.block_store.find_transaction(dispute.tx()).await?;
-
-        // TODO: implement
-
-        Ok(())
+    async fn handle_dispute(&self, _account: &mut Account, dispute: Dispute) -> Result<(), Error> {
+        let transaction = self.block_store.find_transaction(dispute.tx()).await;
+        match transaction {
+            Ok(_transaction) => Ok(()),
+            Err(Error::DisputeTxNotFound { .. }) => {
+                // Safe to ignore, according to spec
+                Ok(())
+            }
+            Err(e) => Err(e),
+        }
     }
 
     fn handle_resolve(&self, _account: &mut Account, _resolve: Resolve) -> Result<(), Error> {

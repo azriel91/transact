@@ -113,7 +113,10 @@ impl TxBlockStore {
                     .await
                     .map(move |block_transactions| {
                         block_transactions.try_filter(move |transaction| {
-                            let tx_matches = transaction.tx() == tx;
+                            // Only match withdrawals, because dispute related transactions don't
+                            // carry amounts, and deposits are not going to be disputed.
+                            let tx_matches = matches!(transaction, Transaction::Withdrawal(_))
+                                && transaction.tx() == tx;
                             async move { tx_matches }
                         })
                     })
