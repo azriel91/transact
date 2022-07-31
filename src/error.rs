@@ -12,10 +12,10 @@ pub enum Error {
         /// Path to the CSV.
         path: PathBuf,
         /// Underlying CSV error.
-        error: csv::Error,
+        error: std::io::Error,
     },
     /// Error deserializing a transaction.
-    TransactionDeserialize(csv::Error),
+    TransactionDeserialize(csv_async::Error),
     /// Deposit amount not provided in transaction record.
     DepositAmountNotProvided {
         /// Client ID.
@@ -64,7 +64,7 @@ pub enum Error {
         amount: Decimal,
     },
     /// Error writing output.
-    OutputWrite(csv::Error),
+    OutputWrite(csv_async::Error),
     /// Error flushing output stream.
     OutputFlush(std::io::Error),
 }

@@ -30,9 +30,9 @@ mod tx_processor;
 /// Processes transactions and outputs them to the given stream.
 pub async fn process<W>(path: &Path, out_stream: W) -> Result<(), Error>
 where
-    W: std::io::Write,
+    W: tokio::io::AsyncWrite + Unpin,
 {
-    let transactions = TransactCsv::stream(path)?;
+    let transactions = TransactCsv::stream(path).await?;
     let accounts = transactions
         .try_fold(Accounts::new(), |mut accounts, transaction| async move {
             let account = accounts
@@ -50,14 +50,17 @@ where
         .try_fold(
             TransactCsv::csv_writer(out_stream),
             |mut writer, account| async move {
-                writer.serialize(account).map_err(Error::OutputWrite)?;
+                writer
+                    .serialize(account)
+                    .await
+                    .map_err(Error::OutputWrite)?;
 
                 Ok(writer)
             },
         )
         .await?;
 
-    writer.flush().map_err(Error::OutputFlush)?;
+    writer.flush().await.map_err(Error::OutputFlush)?;
 
     Ok(())
 }

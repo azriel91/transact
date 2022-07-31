@@ -13,9 +13,9 @@ license = "MIT OR Apache-2.0"
 name = "transact"
 
 [dependencies]
-csv = "1.1.6"
+csv-async = { version = "1.2.4", features = ["with_serde", "tokio"] }
 rust_decimal = { version = "1.25", features = ["serde-with-float"] }
 rust_decimal_macros = "1.25"
 futures = "0.3.21"
 serde = { version = "1.0.140", features = ["derive"] }
-tokio = { version = "1.20.1", features = ["io-util", "rt"] }
+tokio = { version = "1.20.1", features = ["io-std", "io-util", "rt"] }
