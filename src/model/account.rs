@@ -1,20 +1,53 @@
+use rust_decimal::Decimal;
+use rust_decimal_macros::dec;
 use serde::{Deserialize, Serialize};
 
 use crate::model::ClientId;
 
+/// Error when `available` and `held` amounts will overflow when added together.
+#[derive(Debug)]
+pub struct TotalOverflow;
+
 /// Client account state.
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub struct Account {
     client: ClientId,
-    available: f64,
-    held: f64,
-    total: f64,
+    #[serde(with = "rust_decimal::serde::float")]
+    available: Decimal,
+    #[serde(with = "rust_decimal::serde::float")]
+    held: Decimal,
+    #[serde(with = "rust_decimal::serde::float")]
+    total: Decimal,
     locked: bool,
 }
 
 impl Account {
-    /// Returns a new `Account`.
-    pub fn new(client: ClientId, available: f64, held: f64, total: f64, locked: bool) -> Self {
+    /// Returns a new `Account` with the provided values.
+    pub fn try_new(
+        client: ClientId,
+        available: Decimal,
+        held: Decimal,
+        locked: bool,
+    ) -> Result<Self, TotalOverflow> {
+        let total = available.checked_add(held).ok_or(TotalOverflow)?;
+
+        Ok(Self {
+            client,
+            available,
+            held,
+            total,
+            locked,
+        })
+    }
+
+    /// Returns a new empty `Account`.
+    pub fn empty(client: ClientId) -> Self {
+        // Should be sensible defaults
+        let available = dec!(0.0);
+        let held = dec!(0.0);
+        let total = dec!(0.0);
+        let locked = false;
+
         Self {
             client,
             available,
@@ -24,27 +57,27 @@ impl Account {
         }
     }
 
-    /// Get the account's client.
+    /// Returns the account's client.
     pub fn client(&self) -> ClientId {
         self.client
     }
 
-    /// Get the account's available.
-    pub fn available(&self) -> f64 {
+    /// Returns the available funds in the account.
+    pub fn available(&self) -> Decimal {
         self.available
     }
 
-    /// Get the account's held.
-    pub fn held(&self) -> f64 {
+    /// Returns the held funds in the account.
+    pub fn held(&self) -> Decimal {
         self.held
     }
 
-    /// Get the account's total.
-    pub fn total(&self) -> f64 {
+    /// Returns the total funds in the account.
+    pub fn total(&self) -> Decimal {
         self.total
     }
 
-    /// Get the account's locked.
+    /// Returns whether the account is locked.
     pub fn locked(&self) -> bool {
         self.locked
     }
