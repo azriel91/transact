@@ -90,3 +90,83 @@ impl TxProcessor {
         todo!()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use rust_decimal::Decimal;
+    use rust_decimal_macros::dec;
+
+    use super::TxProcessor;
+    use crate::{
+        model::{Account, ClientId, Deposit, TxId},
+        Error,
+    };
+
+    #[test]
+    fn deposit_positive_amount() -> Result<(), Error> {
+        let client = ClientId::new(1);
+        let tx = TxId::new(2);
+        let amount = dec!(1.0);
+        let mut account = Account::empty(client);
+
+        TxProcessor::handle_deposit(&mut account, Deposit::new(client, tx, amount))?;
+
+        let account_expected =
+            Account::try_new(client, dec!(1.0), dec!(0.0), false).expect("Test data invalid.");
+        assert_eq!(account_expected, account);
+        Ok(())
+    }
+
+    #[test]
+    fn deposit_negative_amount_returns_err() -> Result<(), Error> {
+        let client = ClientId::new(1);
+        let tx = TxId::new(2);
+        let amount = dec!(-1.0);
+        let mut account = Account::empty(client);
+
+        let result = TxProcessor::handle_deposit(&mut account, Deposit::new(client, tx, amount));
+
+        assert!(matches!(
+            result,
+            Err(Error::DepositAmountNegative { client, tx, amount })
+            if client == ClientId::new(1) && tx == TxId::new(2) && amount == dec!(-1.0)
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn deposit_amount_overflow_available() -> Result<(), Error> {
+        let client = ClientId::new(1);
+        let tx = TxId::new(2);
+        let amount = Decimal::MAX;
+        let mut account =
+            Account::try_new(client, dec!(1.0), dec!(0.0), false).expect("Test data invalid.");
+
+        let result = TxProcessor::handle_deposit(&mut account, Deposit::new(client, tx, amount));
+
+        assert!(matches!(
+            result,
+            Err(Error::DepositAvailableOverflow { client, tx })
+            if client == ClientId::new(1) && tx == TxId::new(2)
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn deposit_total_overflow() -> Result<(), Error> {
+        let client = ClientId::new(1);
+        let tx = TxId::new(2);
+        let amount = Decimal::MAX.saturating_sub(dec!(1.0));
+        let mut account =
+            Account::try_new(client, dec!(1.0), dec!(2.0), false).expect("Test data invalid.");
+
+        let result = TxProcessor::handle_deposit(&mut account, Deposit::new(client, tx, amount));
+
+        assert!(matches!(
+            result,
+            Err(Error::DepositTotalOverflow { client, tx })
+            if client == ClientId::new(1) && tx == TxId::new(2)
+        ));
+        Ok(())
+    }
+}

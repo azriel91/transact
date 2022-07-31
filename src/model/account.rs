@@ -9,7 +9,7 @@ use crate::model::ClientId;
 pub struct TotalOverflow;
 
 /// Client account state.
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub struct Account {
     client: ClientId,
     #[serde(with = "rust_decimal::serde::float")]
