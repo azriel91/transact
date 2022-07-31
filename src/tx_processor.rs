@@ -2,26 +2,38 @@ use std::cmp::Ordering;
 
 use crate::{
     model::{Account, Chargeback, Deposit, Dispute, Resolve, Transaction, Withdrawal},
-    Error,
+    Error, TxBlockStore,
 };
 
 /// Processes transactions for an account.
 #[derive(Debug)]
-pub struct TxProcessor;
+pub struct TxProcessor<'block_store> {
+    /// Stores transactions.
+    block_store: &'block_store TxBlockStore,
+}
 
-impl TxProcessor {
+impl<'block_store> TxProcessor<'block_store> {
+    /// Returns a new `TxProcessor`.
+    pub fn new(block_store: &'block_store TxBlockStore) -> Self {
+        Self { block_store }
+    }
+
     /// Processes a transaction for an account.
-    pub fn process(account: &mut Account, transaction: Transaction) -> Result<(), Error> {
+    pub async fn process(
+        &self,
+        account: &mut Account,
+        transaction: Transaction,
+    ) -> Result<(), Error> {
         match transaction {
-            Transaction::Deposit(deposit) => Self::handle_deposit(account, deposit),
-            Transaction::Withdrawal(withdrawal) => Self::handle_withdrawal(account, withdrawal),
-            Transaction::Dispute(dispute) => Self::handle_dispute(account, dispute),
-            Transaction::Resolve(resolve) => Self::handle_resolve(account, resolve),
-            Transaction::Chargeback(chargeback) => Self::handle_chargeback(account, chargeback),
+            Transaction::Deposit(deposit) => self.handle_deposit(account, deposit),
+            Transaction::Withdrawal(withdrawal) => self.handle_withdrawal(account, withdrawal),
+            Transaction::Dispute(dispute) => self.handle_dispute(account, dispute).await,
+            Transaction::Resolve(resolve) => self.handle_resolve(account, resolve),
+            Transaction::Chargeback(chargeback) => self.handle_chargeback(account, chargeback),
         }
     }
 
-    fn handle_deposit(account: &mut Account, deposit: Deposit) -> Result<(), Error> {
+    fn handle_deposit(&self, account: &mut Account, deposit: Deposit) -> Result<(), Error> {
         let client = account.client();
         let tx = deposit.tx();
         let deposit_amount = deposit.amount();
@@ -45,7 +57,11 @@ impl TxProcessor {
             .map(|account_updated| *account = account_updated)
     }
 
-    fn handle_withdrawal(account: &mut Account, withdrawal: Withdrawal) -> Result<(), Error> {
+    fn handle_withdrawal(
+        &self,
+        account: &mut Account,
+        withdrawal: Withdrawal,
+    ) -> Result<(), Error> {
         let client = account.client();
         let tx = withdrawal.tx();
         let withdrawal_amount = withdrawal.amount();
@@ -78,15 +94,23 @@ impl TxProcessor {
         }
     }
 
-    fn handle_dispute(_account: &mut Account, _dispute: Dispute) -> Result<(), Error> {
+    async fn handle_dispute(&self, account: &mut Account, dispute: Dispute) -> Result<(), Error> {
+        let transaction = self.block_store.find_transaction(dispute.tx()).await?;
+
+        // TODO: implement
+
+        Ok(())
+    }
+
+    fn handle_resolve(&self, _account: &mut Account, _resolve: Resolve) -> Result<(), Error> {
         todo!()
     }
 
-    fn handle_resolve(_account: &mut Account, _resolve: Resolve) -> Result<(), Error> {
-        todo!()
-    }
-
-    fn handle_chargeback(_account: &mut Account, _chargeback: Chargeback) -> Result<(), Error> {
+    fn handle_chargeback(
+        &self,
+        _account: &mut Account,
+        _chargeback: Chargeback,
+    ) -> Result<(), Error> {
         todo!()
     }
 }
@@ -99,7 +123,7 @@ mod tests {
     use super::TxProcessor;
     use crate::{
         model::{Account, ClientId, Deposit, TxId, Withdrawal},
-        Error,
+        Error, TxBlockStore,
     };
 
     #[test]
@@ -109,7 +133,9 @@ mod tests {
         let amount = dec!(1.0);
         let mut account = Account::empty(client);
 
-        TxProcessor::handle_deposit(&mut account, Deposit::new(client, tx, amount))?;
+        let tx_block_store = &TxBlockStore::try_new().expect("Failed to initialize block store.");
+        let tx_processor = TxProcessor::new(tx_block_store);
+        tx_processor.handle_deposit(&mut account, Deposit::new(client, tx, amount))?;
 
         let account_expected =
             Account::try_new(client, dec!(1.0), dec!(0.0), false).expect("Test data invalid.");
@@ -124,7 +150,9 @@ mod tests {
         let amount = dec!(-1.0);
         let mut account = Account::empty(client);
 
-        let result = TxProcessor::handle_deposit(&mut account, Deposit::new(client, tx, amount));
+        let tx_block_store = &TxBlockStore::try_new().expect("Failed to initialize block store.");
+        let tx_processor = TxProcessor::new(tx_block_store);
+        let result = tx_processor.handle_deposit(&mut account, Deposit::new(client, tx, amount));
 
         assert!(matches!(
             result,
@@ -142,7 +170,9 @@ mod tests {
         let mut account =
             Account::try_new(client, dec!(1.0), dec!(0.0), false).expect("Test data invalid.");
 
-        let result = TxProcessor::handle_deposit(&mut account, Deposit::new(client, tx, amount));
+        let tx_block_store = &TxBlockStore::try_new().expect("Failed to initialize block store.");
+        let tx_processor = TxProcessor::new(tx_block_store);
+        let result = tx_processor.handle_deposit(&mut account, Deposit::new(client, tx, amount));
 
         assert!(matches!(
             result,
@@ -160,7 +190,9 @@ mod tests {
         let mut account =
             Account::try_new(client, dec!(1.0), dec!(2.0), false).expect("Test data invalid.");
 
-        let result = TxProcessor::handle_deposit(&mut account, Deposit::new(client, tx, amount));
+        let tx_block_store = &TxBlockStore::try_new().expect("Failed to initialize block store.");
+        let tx_processor = TxProcessor::new(tx_block_store);
+        let result = tx_processor.handle_deposit(&mut account, Deposit::new(client, tx, amount));
 
         assert!(matches!(
             result,
@@ -179,7 +211,9 @@ mod tests {
         let mut account =
             Account::try_new(client, dec!(2.0), dec!(0.0), false).expect("Test data invalid.");
 
-        TxProcessor::handle_withdrawal(&mut account, Withdrawal::new(client, tx, amount))?;
+        let tx_block_store = &TxBlockStore::try_new().expect("Failed to initialize block store.");
+        let tx_processor = TxProcessor::new(tx_block_store);
+        tx_processor.handle_withdrawal(&mut account, Withdrawal::new(client, tx, amount))?;
 
         let account_expected =
             Account::try_new(client, dec!(1.0), dec!(0.0), false).expect("Test data invalid.");
@@ -196,7 +230,9 @@ mod tests {
         let mut account =
             Account::try_new(client, dec!(1.0), dec!(0.0), false).expect("Test data invalid.");
 
-        TxProcessor::handle_withdrawal(&mut account, Withdrawal::new(client, tx, amount))?;
+        let tx_block_store = &TxBlockStore::try_new().expect("Failed to initialize block store.");
+        let tx_processor = TxProcessor::new(tx_block_store);
+        tx_processor.handle_withdrawal(&mut account, Withdrawal::new(client, tx, amount))?;
 
         let account_expected =
             Account::try_new(client, dec!(0.0), dec!(0.0), false).expect("Test data invalid.");
@@ -212,7 +248,9 @@ mod tests {
         let mut account =
             Account::try_new(client, dec!(1.0), dec!(0.0), false).expect("Test data invalid.");
 
-        TxProcessor::handle_withdrawal(&mut account, Withdrawal::new(client, tx, amount))?;
+        let tx_block_store = &TxBlockStore::try_new().expect("Failed to initialize block store.");
+        let tx_processor = TxProcessor::new(tx_block_store);
+        tx_processor.handle_withdrawal(&mut account, Withdrawal::new(client, tx, amount))?;
 
         let account_expected =
             Account::try_new(client, dec!(1.0), dec!(0.0), false).expect("Test data invalid.");
@@ -227,8 +265,10 @@ mod tests {
         let amount = dec!(-1.0);
         let mut account = Account::empty(client);
 
+        let tx_block_store = &TxBlockStore::try_new().expect("Failed to initialize block store.");
+        let tx_processor = TxProcessor::new(tx_block_store);
         let result =
-            TxProcessor::handle_withdrawal(&mut account, Withdrawal::new(client, tx, amount));
+            tx_processor.handle_withdrawal(&mut account, Withdrawal::new(client, tx, amount));
 
         assert!(matches!(
             result,

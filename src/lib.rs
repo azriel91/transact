@@ -41,6 +41,7 @@ where
     W: tokio::io::AsyncWrite + Unpin,
 {
     let tx_block_store = &TxBlockStore::try_new()?;
+    let tx_processor = &TxProcessor::new(tx_block_store);
     let transactions = TransactCsv::stream(path).await?;
     let accounts = transactions
         .try_chunks(TX_BLOCK_SIZE)
@@ -64,7 +65,7 @@ where
                 .entry(transaction.client())
                 .or_insert_with(|| Account::empty(transaction.client()));
 
-            TxProcessor::process(account, transaction)?;
+            tx_processor.process(account, transaction).await?;
 
             Ok(accounts)
         })

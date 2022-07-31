@@ -386,6 +386,7 @@ dependencies = [
  "serde",
  "tempfile",
  "tokio",
+ "tokio-stream",
 ]
 
 [[package]]

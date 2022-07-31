@@ -2,9 +2,14 @@ use std::cmp::{max, min};
 
 use futures::{stream, StreamExt, TryStreamExt};
 use tempfile::TempDir;
-use tokio::fs::File;
+use tokio::fs::{DirEntry, File};
+use tokio_stream::wrappers::ReadDirStream;
 
-use crate::{csv::TxRecord, model::Transaction, Error, TransactCsv};
+use crate::{
+    csv::TxRecord,
+    model::{Transaction, TxId},
+    Error, TransactCsv,
+};
 
 #[derive(Debug)]
 pub struct TxBlockStore {
@@ -63,15 +68,94 @@ impl TxBlockStore {
             .await?;
         block_writer.flush().await.map_err(Error::BlockFileFlush)?;
         let min_max_file_name = format!("{tx_min}_{tx_max}.csv");
+        let min_max_file_path = self.temp_dir.path().join(&min_max_file_name);
 
-        tokio::fs::rename(&file_name, &min_max_file_name)
-            .await
-            .map_err(|error| Error::BlockFileRename {
-                from: file_name,
-                to: min_max_file_name,
-                error,
-            })?;
+        if file_name != min_max_file_name {
+            tokio::fs::rename(&file_path, &min_max_file_path)
+                .await
+                .map_err(|error| Error::BlockFileRename {
+                    from: file_name,
+                    to: min_max_file_name,
+                    error,
+                })?;
+        }
 
         Ok(())
+    }
+
+    /// Returns the transaction if found in this block store.
+    ///
+    /// This is a semi expensive operation.
+    ///
+    /// An optimization is to store disputed transactions and their amounts
+    /// separately.
+    pub async fn find_transaction(&self, tx: TxId) -> Result<Transaction, Error> {
+        let block_transaction_match = tokio::fs::read_dir(self.temp_dir.path())
+            .await
+            .map(ReadDirStream::new)
+            .map_err(Error::BlockStoreDirRead)?
+            .map_err(Error::BlockStoreDirRead)
+            .and_then(Self::parse_min_max_tx)
+            .try_filter_map(|(dir_entry, tx_min, tx_max)| {
+                // Checks if the block file may contain the transaction.
+                let block_may_have_transaction = tx_min <= tx && tx_max >= tx;
+                async move {
+                    if block_may_have_transaction {
+                        Ok(Some(dir_entry))
+                    } else {
+                        Ok(None)
+                    }
+                }
+            })
+            .and_then(|dir_entry| async move {
+                // Stream the transaction block file.
+                TransactCsv::stream(&dir_entry.path())
+                    .await
+                    .map(move |block_transactions| {
+                        block_transactions.try_filter(move |transaction| {
+                            let tx_matches = transaction.tx() == tx;
+                            async move { tx_matches }
+                        })
+                    })
+            })
+            .try_flatten();
+
+        Box::pin(block_transaction_match)
+            .next()
+            .await
+            .ok_or(Error::DisputeTxNotFound { tx })?
+    }
+
+    /// Returns the min and max transaction IDs associated with a dir entry.
+    async fn parse_min_max_tx(dir_entry: DirEntry) -> Result<(DirEntry, TxId, TxId), Error> {
+        let file_name = dir_entry.file_name();
+        let file_name_lossy = file_name.to_string_lossy();
+        let mut plain_name = file_name_lossy.splitn(2, '.');
+        let file_name_invalid = || Error::BlockFileNameInvalid {
+            file_name: file_name.clone(),
+        };
+        let file_name_invalid_err = |_| Error::BlockFileNameInvalid {
+            file_name: file_name.clone(),
+        };
+        let mut split = plain_name
+            .next()
+            .ok_or_else(file_name_invalid)?
+            .splitn(2, '_');
+        let tx_min = TxId::from(
+            split
+                .next()
+                .ok_or_else(file_name_invalid)?
+                .parse::<u32>()
+                .map_err(file_name_invalid_err)?,
+        );
+        let tx_max = TxId::from(
+            split
+                .next()
+                .ok_or_else(file_name_invalid)?
+                .parse::<u32>()
+                .map_err(file_name_invalid_err)?,
+        );
+
+        Ok((dir_entry, tx_min, tx_max))
     }
 }
