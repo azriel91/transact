@@ -123,13 +123,8 @@ impl<'block_store> TxProcessor<'block_store> {
                         let amount = deposit.amount();
                         (tx, amount)
                     }
-                    Transaction::Withdrawal(withdrawal) => {
-                        let tx = withdrawal.tx();
-                        let amount = withdrawal.amount();
-                        (tx, amount)
-                    }
                     _ => unreachable!(
-                        "Only deposits and withdrawals may be disputed -- see `TxBlockStore::find_transaction`."
+                        "Only deposits may be disputed -- see `TxBlockStore::find_transaction`."
                     ),
                 };
 
@@ -205,13 +200,8 @@ impl<'block_store> TxProcessor<'block_store> {
                             let amount = deposit.amount();
                             (tx, amount)
                         }
-                        Transaction::Withdrawal(withdrawal) => {
-                            let tx = withdrawal.tx();
-                            let amount = withdrawal.amount();
-                            (tx, amount)
-                        }
                         _ => unreachable!(
-                            "Only deposits and withdrawals may be disputed -- see `TxBlockStore::find_transaction`."
+                            "Only deposits may be disputed -- see `TxBlockStore::find_transaction`."
                         ),
                     };
 
@@ -295,13 +285,8 @@ impl<'block_store> TxProcessor<'block_store> {
                             let amount = deposit.amount();
                             (tx, amount)
                         }
-                        Transaction::Withdrawal(withdrawal) => {
-                            let tx = withdrawal.tx();
-                            let amount = withdrawal.amount();
-                            (tx, amount)
-                        }
                         _ => unreachable!(
-                            "Only deposits and withdrawals may be disputed -- see `TxBlockStore::find_transaction`."
+                            "Only deposits may be disputed -- see `TxBlockStore::find_transaction`."
                         ),
                     };
 

@@ -25,9 +25,10 @@ impl TxBlockStore {
 
     /// Persists the given block of transactions in this store.
     pub async fn persist_block(&self, transactions: &[Transaction]) -> Result<(), Error> {
-        // find smallest and largest transaction id
-        // TODO: optimization: map to tx,amt
-        // save as min_max.csv
+        // * find smallest and largest transaction id
+        // * TODO (optimization): map to client,tx,amt -- only possible if we can only
+        //   reverse one kind of transaction
+        // * save as min_max.csv
 
         let tx_min = transactions
             .first()
@@ -51,12 +52,9 @@ impl TxBlockStore {
         let (mut block_writer, tx_min, tx_max) = stream::iter(
             // Only persist deposits and withdrawals, as they're the only transactions that may be
             // disputed
-            transactions.iter().filter(|transaction| {
-                matches!(
-                    transaction,
-                    Transaction::Deposit(_) | Transaction::Withdrawal(_)
-                )
-            }),
+            transactions
+                .iter()
+                .filter(|transaction| matches!(transaction, Transaction::Deposit(_))),
         )
         .map(Result::<_, Error>::Ok)
         .try_fold(
@@ -122,12 +120,14 @@ impl TxBlockStore {
                     .await
                     .map(move |block_transactions| {
                         block_transactions.try_filter(move |transaction| {
-                            // Only match deposits and withdrawals, because
-                            // dispute/resolve/chargeback transactions don't carry amounts.
-                            let tx_matches = matches!(
-                                transaction,
-                                Transaction::Deposit(_) | Transaction::Withdrawal(_)
-                            ) && transaction.tx() == tx;
+                            // Only match deposits, because dispute/resolve/chargeback transactions
+                            // don't carry amounts, and from the spec it doesn't appear that
+                            // disputes apply to withdrawals.
+                            //
+                            // If you update here, also update the filter in
+                            // `TxBlockStore::persist_block`
+                            let tx_matches = matches!(transaction, Transaction::Deposit(_))
+                                && transaction.tx() == tx;
                             async move { tx_matches }
                         })
                     })
