@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use serde::{Deserialize, Serialize};
@@ -20,7 +22,7 @@ pub struct Account {
     total: Decimal,
     locked: bool,
     #[serde(skip)]
-    disputed_txs: Vec<TxId>,
+    disputed_txs: HashSet<TxId>,
 }
 
 impl Account {
@@ -30,7 +32,7 @@ impl Account {
         available: Decimal,
         held: Decimal,
         locked: bool,
-        disputed_txs: Vec<TxId>,
+        disputed_txs: HashSet<TxId>,
     ) -> Result<Self, TotalOverflow> {
         let total = available.checked_add(held).ok_or(TotalOverflow)?;
 
@@ -51,7 +53,7 @@ impl Account {
         let held = dec!(0.0);
         let total = dec!(0.0);
         let locked = false;
-        let disputed_txs = vec![];
+        let disputed_txs = HashSet::new();
 
         Self {
             client,
@@ -89,7 +91,7 @@ impl Account {
     }
 
     /// Returns open disputed transactions.
-    pub fn disputed_txs(&self) -> &[TxId] {
+    pub fn disputed_txs(&self) -> &HashSet<TxId> {
         &self.disputed_txs
     }
 }

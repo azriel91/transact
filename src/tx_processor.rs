@@ -63,7 +63,7 @@ impl<'block_store> TxProcessor<'block_store> {
                     available_next,
                     account.held(),
                     account.locked(),
-                    account.disputed_txs().to_vec(),
+                    account.disputed_txs().clone(),
                 )
                 .map_err(|_| Error::DepositTotalOverflow { client, tx })
             })
@@ -96,7 +96,7 @@ impl<'block_store> TxProcessor<'block_store> {
                 available_next,
                 account.held(),
                 account.locked(),
-                account.disputed_txs().to_vec(),
+                account.disputed_txs().clone(),
             )
             .expect(
                 "Overflow impossible: Withdrawal amount is less than or equal to available amount, \
@@ -152,9 +152,8 @@ impl<'block_store> TxProcessor<'block_store> {
                     amount,
                 })?;
 
-                let mut disputed_txs = Vec::with_capacity(account.disputed_txs().len() + 1);
-                disputed_txs.extend_from_slice(account.disputed_txs());
-                disputed_txs.push(tx);
+                let mut disputed_txs = account.disputed_txs().clone();
+                disputed_txs.insert(tx);
                 let account_updated = Account::try_new(
                     client,
                     available_next,
@@ -185,12 +184,12 @@ impl<'block_store> TxProcessor<'block_store> {
         }
 
         let resolve_tx = resolve.tx();
-        let disputed_tx_pos = account
+        let disputed_tx = account
             .disputed_txs()
             .iter()
-            .position(|disputed_tx| disputed_tx == &resolve_tx);
+            .find(|disputed_tx| **disputed_tx == resolve_tx);
 
-        if let Some(disputed_tx_pos) = disputed_tx_pos {
+        if let Some(disputed_tx) = disputed_tx {
             let transaction = self.block_store.find_transaction(resolve_tx).await;
             match transaction {
                 Ok(transaction) => {
@@ -232,8 +231,8 @@ impl<'block_store> TxProcessor<'block_store> {
                                 amount,
                             })?;
 
-                    let mut disputed_txs = account.disputed_txs().to_vec();
-                    disputed_txs.swap_remove(disputed_tx_pos);
+                    let mut disputed_txs = account.disputed_txs().clone();
+                    disputed_txs.remove(disputed_tx);
                     let account_updated = Account::try_new(
                         client,
                         available_next,
@@ -270,12 +269,12 @@ impl<'block_store> TxProcessor<'block_store> {
         }
 
         let chargeback_tx = chargeback.tx();
-        let disputed_tx_pos = account
+        let disputed_tx = account
             .disputed_txs()
             .iter()
-            .position(|disputed_tx| disputed_tx == &chargeback_tx);
+            .find(|disputed_tx| **disputed_tx == chargeback_tx);
 
-        if let Some(disputed_tx_pos) = disputed_tx_pos {
+        if let Some(disputed_tx) = disputed_tx {
             let transaction = self.block_store.find_transaction(chargeback_tx).await;
             match transaction {
                 Ok(transaction) => {
@@ -307,8 +306,8 @@ impl<'block_store> TxProcessor<'block_store> {
                     // never negative, as we've done the comparison above
                     let held_next = held.saturating_sub(amount);
 
-                    let mut disputed_txs = account.disputed_txs().to_vec();
-                    disputed_txs.swap_remove(disputed_tx_pos);
+                    let mut disputed_txs = account.disputed_txs().clone();
+                    disputed_txs.remove(disputed_tx);
                     let account_updated = Account::try_new(
                         client,
                         available,
@@ -337,6 +336,8 @@ impl<'block_store> TxProcessor<'block_store> {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashSet;
+
     use rust_decimal::Decimal;
     use rust_decimal_macros::dec;
 
@@ -357,8 +358,9 @@ mod tests {
         let tx_processor = TxProcessor::new(tx_block_store);
         tx_processor.handle_deposit(&mut account, Deposit::new(client, tx, amount))?;
 
-        let account_expected = Account::try_new(client, dec!(1.0), dec!(0.0), false, vec![])
-            .expect("Test data invalid.");
+        let account_expected =
+            Account::try_new(client, dec!(1.0), dec!(0.0), false, HashSet::new())
+                .expect("Test data invalid.");
         assert_eq!(account_expected, account);
         Ok(())
     }
@@ -387,7 +389,7 @@ mod tests {
         let client = ClientId::new(1);
         let tx = TxId::new(2);
         let amount = Decimal::MAX;
-        let mut account = Account::try_new(client, dec!(1.0), dec!(0.0), false, vec![])
+        let mut account = Account::try_new(client, dec!(1.0), dec!(0.0), false, HashSet::new())
             .expect("Test data invalid.");
 
         let tx_block_store = &TxBlockStore::try_new().expect("Failed to initialize block store.");
@@ -407,7 +409,7 @@ mod tests {
         let client = ClientId::new(1);
         let tx = TxId::new(2);
         let amount = Decimal::MAX.saturating_sub(dec!(1.0));
-        let mut account = Account::try_new(client, dec!(1.0), dec!(2.0), false, vec![])
+        let mut account = Account::try_new(client, dec!(1.0), dec!(2.0), false, HashSet::new())
             .expect("Test data invalid.");
 
         let tx_block_store = &TxBlockStore::try_new().expect("Failed to initialize block store.");
@@ -428,15 +430,16 @@ mod tests {
         let client = ClientId::new(1);
         let tx = TxId::new(2);
         let amount = dec!(1.0);
-        let mut account = Account::try_new(client, dec!(2.0), dec!(0.0), false, vec![])
+        let mut account = Account::try_new(client, dec!(2.0), dec!(0.0), false, HashSet::new())
             .expect("Test data invalid.");
 
         let tx_block_store = &TxBlockStore::try_new().expect("Failed to initialize block store.");
         let tx_processor = TxProcessor::new(tx_block_store);
         tx_processor.handle_withdrawal(&mut account, Withdrawal::new(client, tx, amount))?;
 
-        let account_expected = Account::try_new(client, dec!(1.0), dec!(0.0), false, vec![])
-            .expect("Test data invalid.");
+        let account_expected =
+            Account::try_new(client, dec!(1.0), dec!(0.0), false, HashSet::new())
+                .expect("Test data invalid.");
         assert_eq!(account_expected, account);
         Ok(())
     }
@@ -447,15 +450,16 @@ mod tests {
         let client = ClientId::new(1);
         let tx = TxId::new(2);
         let amount = dec!(1.0);
-        let mut account = Account::try_new(client, dec!(1.0), dec!(0.0), false, vec![])
+        let mut account = Account::try_new(client, dec!(1.0), dec!(0.0), false, HashSet::new())
             .expect("Test data invalid.");
 
         let tx_block_store = &TxBlockStore::try_new().expect("Failed to initialize block store.");
         let tx_processor = TxProcessor::new(tx_block_store);
         tx_processor.handle_withdrawal(&mut account, Withdrawal::new(client, tx, amount))?;
 
-        let account_expected = Account::try_new(client, dec!(0.0), dec!(0.0), false, vec![])
-            .expect("Test data invalid.");
+        let account_expected =
+            Account::try_new(client, dec!(0.0), dec!(0.0), false, HashSet::new())
+                .expect("Test data invalid.");
         assert_eq!(account_expected, account);
         Ok(())
     }
@@ -465,15 +469,16 @@ mod tests {
         let client = ClientId::new(1);
         let tx = TxId::new(2);
         let amount = dec!(2.0);
-        let mut account = Account::try_new(client, dec!(1.0), dec!(0.0), false, vec![])
+        let mut account = Account::try_new(client, dec!(1.0), dec!(0.0), false, HashSet::new())
             .expect("Test data invalid.");
 
         let tx_block_store = &TxBlockStore::try_new().expect("Failed to initialize block store.");
         let tx_processor = TxProcessor::new(tx_block_store);
         tx_processor.handle_withdrawal(&mut account, Withdrawal::new(client, tx, amount))?;
 
-        let account_expected = Account::try_new(client, dec!(1.0), dec!(0.0), false, vec![])
-            .expect("Test data invalid.");
+        let account_expected =
+            Account::try_new(client, dec!(1.0), dec!(0.0), false, HashSet::new())
+                .expect("Test data invalid.");
         assert_eq!(account_expected, account);
         Ok(())
     }
