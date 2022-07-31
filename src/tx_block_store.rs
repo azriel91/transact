@@ -48,24 +48,29 @@ impl TxBlockStore {
             .await
             .map_err(Error::BlockFileCreate)?;
 
-        let (mut block_writer, tx_min, tx_max) = stream::iter(transactions.iter())
-            .map(Result::<_, Error>::Ok)
-            .try_fold(
-                (TransactCsv::csv_writer(block_file), tx_min, tx_max),
-                |(mut block_writer, tx_min, tx_max), transaction| async move {
-                    block_writer
-                        .serialize(TxRecord::from(transaction.clone()))
-                        .await
-                        .map_err(Error::BlockTxWrite)?;
+        let (mut block_writer, tx_min, tx_max) = stream::iter(
+            // Only persist deposits, as they're the only transactions that may be disputed
+            transactions
+                .iter()
+                .filter(|transaction| matches!(transaction, Transaction::Deposit(_))),
+        )
+        .map(Result::<_, Error>::Ok)
+        .try_fold(
+            (TransactCsv::csv_writer(block_file), tx_min, tx_max),
+            |(mut block_writer, tx_min, tx_max), transaction| async move {
+                block_writer
+                    .serialize(TxRecord::from(transaction.clone()))
+                    .await
+                    .map_err(Error::BlockTxWrite)?;
 
-                    Ok((
-                        block_writer,
-                        min(tx_min, transaction.tx()),
-                        max(tx_max, transaction.tx()),
-                    ))
-                },
-            )
-            .await?;
+                Ok((
+                    block_writer,
+                    min(tx_min, transaction.tx()),
+                    max(tx_max, transaction.tx()),
+                ))
+            },
+        )
+        .await?;
         block_writer.flush().await.map_err(Error::BlockFileFlush)?;
         let min_max_file_name = format!("{tx_min}_{tx_max}.csv");
         let min_max_file_path = self.temp_dir.path().join(&min_max_file_name);
@@ -113,9 +118,9 @@ impl TxBlockStore {
                     .await
                     .map(move |block_transactions| {
                         block_transactions.try_filter(move |transaction| {
-                            // Only match withdrawals, because dispute related transactions don't
-                            // carry amounts, and deposits are not going to be disputed.
-                            let tx_matches = matches!(transaction, Transaction::Withdrawal(_))
+                            // Only match deposits, because dispute/resole/chargeback transactions
+                            // don't carry amounts, and withdrawals are not going to be disputed.
+                            let tx_matches = matches!(transaction, Transaction::Deposit(_))
                                 && transaction.tx() == tx;
                             async move { tx_matches }
                         })

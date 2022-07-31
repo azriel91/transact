@@ -112,12 +112,12 @@ impl<'block_store> TxProcessor<'block_store> {
         let transaction = self.block_store.find_transaction(dispute.tx()).await;
         match transaction {
             Ok(transaction) => match transaction {
-                Transaction::Withdrawal(withdrawal) => {
+                Transaction::Deposit(deposit) => {
                     let client = account.client();
-                    let tx = withdrawal.tx();
+                    let tx = deposit.tx();
                     let available = account.available();
                     let held = account.held();
-                    let amount = withdrawal.amount();
+                    let amount = deposit.amount();
 
                     if amount.cmp(&available) == Ordering::Greater {
                         // Not enough available to hold.
@@ -130,7 +130,7 @@ impl<'block_store> TxProcessor<'block_store> {
                     }
 
                     // never negative, as we've done the comparison above
-                    let available_next = available.saturating_sub(withdrawal.amount());
+                    let available_next = available.saturating_sub(deposit.amount());
 
                     let held_next = held.checked_add(amount).ok_or(Error::DisputeHeldOverflow {
                         client,
@@ -156,7 +156,7 @@ impl<'block_store> TxProcessor<'block_store> {
                     Ok(())
                 }
                 _ => unreachable!(
-                    "Only withdrawals may be disputed -- see `TxBlockStore::find_transaction`."
+                    "Only deposits may be disputed -- see `TxBlockStore::find_transaction`."
                 ),
             },
             Err(Error::DisputeTxNotFound { .. }) => {
@@ -178,12 +178,12 @@ impl<'block_store> TxProcessor<'block_store> {
             let transaction = self.block_store.find_transaction(resolve_tx).await;
             match transaction {
                 Ok(transaction) => match transaction {
-                    Transaction::Withdrawal(withdrawal) => {
+                    Transaction::Deposit(deposit) => {
                         let client = account.client();
-                        let tx = withdrawal.tx();
+                        let tx = deposit.tx();
                         let available = account.available();
                         let held = account.held();
-                        let amount = withdrawal.amount();
+                        let amount = deposit.amount();
 
                         if amount.cmp(&held) == Ordering::Greater {
                             // Not enough held to subtract.
@@ -196,7 +196,7 @@ impl<'block_store> TxProcessor<'block_store> {
                         }
 
                         // never negative, as we've done the comparison above
-                        let held_next = held.saturating_sub(withdrawal.amount());
+                        let held_next = held.saturating_sub(deposit.amount());
 
                         let available_next = available.checked_add(amount).ok_or(
                             Error::ResolveAvailableOverflow {
@@ -223,7 +223,7 @@ impl<'block_store> TxProcessor<'block_store> {
                         Ok(())
                     }
                     _ => unreachable!(
-                        "Only withdrawals may be disputed -- see `TxBlockStore::find_transaction`."
+                        "Only deposits may be disputed -- see `TxBlockStore::find_transaction`."
                     ),
                 },
                 Err(Error::DisputeTxNotFound { .. }) => {
@@ -253,12 +253,12 @@ impl<'block_store> TxProcessor<'block_store> {
             let transaction = self.block_store.find_transaction(chargeback_tx).await;
             match transaction {
                 Ok(transaction) => match transaction {
-                    Transaction::Withdrawal(withdrawal) => {
+                    Transaction::Deposit(deposit) => {
                         let client = account.client();
-                        let tx = withdrawal.tx();
+                        let tx = deposit.tx();
                         let available = account.available();
                         let held = account.held();
-                        let amount = withdrawal.amount();
+                        let amount = deposit.amount();
 
                         if amount.cmp(&held) == Ordering::Greater {
                             // Not enough held to subtract.
@@ -271,7 +271,7 @@ impl<'block_store> TxProcessor<'block_store> {
                         }
 
                         // never negative, as we've done the comparison above
-                        let held_next = held.saturating_sub(withdrawal.amount());
+                        let held_next = held.saturating_sub(deposit.amount());
 
                         let mut disputed_txs = account.disputed_txs().to_vec();
                         disputed_txs.swap_remove(disputed_tx_pos);
@@ -289,7 +289,7 @@ impl<'block_store> TxProcessor<'block_store> {
                         Ok(())
                     }
                     _ => unreachable!(
-                        "Only withdrawals may be disputed -- see `TxBlockStore::find_transaction`."
+                        "Only deposits may be disputed -- see `TxBlockStore::find_transaction`."
                     ),
                 },
                 Err(Error::DisputeTxNotFound { .. }) => {
