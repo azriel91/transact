@@ -116,54 +116,65 @@ impl<'block_store> TxProcessor<'block_store> {
 
         let transaction = self.block_store.find_transaction(dispute.tx()).await;
         match transaction {
-            Ok(transaction) => match transaction {
-                Transaction::Deposit(deposit) => {
-                    let client = account.client();
-                    let tx = deposit.tx();
-                    let available = account.available();
-                    let held = account.held();
-                    let amount = deposit.amount();
-
-                    if amount.cmp(&available) == Ordering::Greater {
-                        // Not enough available to hold.
-                        return Err(Error::DisputeInsufficientAvailable {
-                            client,
-                            tx,
-                            available,
-                            amount,
-                        });
+            Ok(transaction) => {
+                let (tx, amount) = match transaction {
+                    Transaction::Deposit(deposit) => {
+                        let tx = deposit.tx();
+                        let amount = deposit.amount();
+                        (tx, amount)
                     }
+                    Transaction::Withdrawal(withdrawal) => {
+                        let tx = withdrawal.tx();
+                        let amount = withdrawal.amount();
+                        (tx, amount)
+                    }
+                    _ => unreachable!(
+                        "Only deposits and withdrawals may be disputed -- see `TxBlockStore::find_transaction`."
+                    ),
+                };
 
-                    // never negative, as we've done the comparison above
-                    let available_next = available.saturating_sub(deposit.amount());
+                let client = account.client();
+                let available = account.available();
+                let held = account.held();
 
-                    let held_next = held.checked_add(amount).ok_or(Error::DisputeHeldOverflow {
+                if amount.cmp(&available) == Ordering::Greater {
+                    // Not enough available to hold.
+                    return Err(Error::DisputeInsufficientAvailable {
                         client,
                         tx,
-                        held,
+                        available,
                         amount,
-                    })?;
-
-                    let mut disputed_txs = Vec::with_capacity(account.disputed_txs().len() + 1);
-                    disputed_txs.extend_from_slice(account.disputed_txs());
-                    disputed_txs.push(tx);
-                    let account_updated = Account::try_new(
-                        client,
-                        available_next,
-                        held_next,
-                        account.locked(),
-                        disputed_txs,
-                    )
-                    .expect("Overflow impossible: available and held amounts should equal previous total.");
-
-                    *account = account_updated;
-
-                    Ok(())
+                    });
                 }
-                _ => unreachable!(
-                    "Only deposits may be disputed -- see `TxBlockStore::find_transaction`."
-                ),
-            },
+
+                // never negative, as we've done the comparison above
+                let available_next = available.saturating_sub(amount);
+
+                let held_next = held.checked_add(amount).ok_or(Error::DisputeHeldOverflow {
+                    client,
+                    tx,
+                    held,
+                    amount,
+                })?;
+
+                let mut disputed_txs = Vec::with_capacity(account.disputed_txs().len() + 1);
+                disputed_txs.extend_from_slice(account.disputed_txs());
+                disputed_txs.push(tx);
+                let account_updated = Account::try_new(
+                    client,
+                    available_next,
+                    held_next,
+                    account.locked(),
+                    disputed_txs,
+                )
+                .expect(
+                    "Overflow impossible: available and held amounts should equal previous total.",
+                );
+
+                *account = account_updated;
+
+                Ok(())
+            }
             Err(Error::DisputeTxNotFound { .. }) => {
                 // Safe to ignore, according to spec
                 Ok(())
@@ -187,55 +198,65 @@ impl<'block_store> TxProcessor<'block_store> {
         if let Some(disputed_tx_pos) = disputed_tx_pos {
             let transaction = self.block_store.find_transaction(resolve_tx).await;
             match transaction {
-                Ok(transaction) => match transaction {
-                    Transaction::Deposit(deposit) => {
-                        let client = account.client();
-                        let tx = deposit.tx();
-                        let available = account.available();
-                        let held = account.held();
-                        let amount = deposit.amount();
-
-                        if amount.cmp(&held) == Ordering::Greater {
-                            // Not enough held to subtract.
-                            return Err(Error::ResolveInsufficientHeld {
-                                client,
-                                tx,
-                                held,
-                                amount,
-                            });
+                Ok(transaction) => {
+                    let (tx, amount) = match transaction {
+                        Transaction::Deposit(deposit) => {
+                            let tx = deposit.tx();
+                            let amount = deposit.amount();
+                            (tx, amount)
                         }
+                        Transaction::Withdrawal(withdrawal) => {
+                            let tx = withdrawal.tx();
+                            let amount = withdrawal.amount();
+                            (tx, amount)
+                        }
+                        _ => unreachable!(
+                            "Only deposits and withdrawals may be disputed -- see `TxBlockStore::find_transaction`."
+                        ),
+                    };
 
-                        // never negative, as we've done the comparison above
-                        let held_next = held.saturating_sub(deposit.amount());
+                    let client = account.client();
+                    let available = account.available();
+                    let held = account.held();
 
-                        let available_next = available.checked_add(amount).ok_or(
-                            Error::ResolveAvailableOverflow {
+                    if amount.cmp(&held) == Ordering::Greater {
+                        // Not enough held to subtract.
+                        return Err(Error::ResolveInsufficientHeld {
+                            client,
+                            tx,
+                            held,
+                            amount,
+                        });
+                    }
+
+                    // never negative, as we've done the comparison above
+                    let held_next = held.saturating_sub(amount);
+
+                    let available_next =
+                        available
+                            .checked_add(amount)
+                            .ok_or(Error::ResolveAvailableOverflow {
                                 client,
                                 tx,
                                 available,
                                 amount,
-                            },
-                        )?;
+                            })?;
 
-                        let mut disputed_txs = account.disputed_txs().to_vec();
-                        disputed_txs.swap_remove(disputed_tx_pos);
-                        let account_updated = Account::try_new(
-                            client,
-                            available_next,
-                            held_next,
-                            account.locked(),
-                            disputed_txs,
-                        )
-                        .expect("Overflow impossible: available and held amounts should equal previous total.");
+                    let mut disputed_txs = account.disputed_txs().to_vec();
+                    disputed_txs.swap_remove(disputed_tx_pos);
+                    let account_updated = Account::try_new(
+                        client,
+                        available_next,
+                        held_next,
+                        account.locked(),
+                        disputed_txs,
+                    )
+                    .expect("Overflow impossible: available and held amounts should equal previous total.");
 
-                        *account = account_updated;
+                    *account = account_updated;
 
-                        Ok(())
-                    }
-                    _ => unreachable!(
-                        "Only deposits may be disputed -- see `TxBlockStore::find_transaction`."
-                    ),
-                },
+                    Ok(())
+                }
                 Err(Error::DisputeTxNotFound { .. }) => {
                     // Safe to ignore, according to spec
                     Ok(())
@@ -267,46 +288,55 @@ impl<'block_store> TxProcessor<'block_store> {
         if let Some(disputed_tx_pos) = disputed_tx_pos {
             let transaction = self.block_store.find_transaction(chargeback_tx).await;
             match transaction {
-                Ok(transaction) => match transaction {
-                    Transaction::Deposit(deposit) => {
-                        let client = account.client();
-                        let tx = deposit.tx();
-                        let available = account.available();
-                        let held = account.held();
-                        let amount = deposit.amount();
-
-                        if amount.cmp(&held) == Ordering::Greater {
-                            // Not enough held to subtract.
-                            return Err(Error::ChargebackInsufficientHeld {
-                                client,
-                                tx,
-                                held,
-                                amount,
-                            });
+                Ok(transaction) => {
+                    let (tx, amount) = match transaction {
+                        Transaction::Deposit(deposit) => {
+                            let tx = deposit.tx();
+                            let amount = deposit.amount();
+                            (tx, amount)
                         }
+                        Transaction::Withdrawal(withdrawal) => {
+                            let tx = withdrawal.tx();
+                            let amount = withdrawal.amount();
+                            (tx, amount)
+                        }
+                        _ => unreachable!(
+                            "Only deposits and withdrawals may be disputed -- see `TxBlockStore::find_transaction`."
+                        ),
+                    };
 
-                        // never negative, as we've done the comparison above
-                        let held_next = held.saturating_sub(deposit.amount());
+                    let client = account.client();
+                    let available = account.available();
+                    let held = account.held();
 
-                        let mut disputed_txs = account.disputed_txs().to_vec();
-                        disputed_txs.swap_remove(disputed_tx_pos);
-                        let account_updated = Account::try_new(
+                    if amount.cmp(&held) == Ordering::Greater {
+                        // Not enough held to subtract.
+                        return Err(Error::ChargebackInsufficientHeld {
                             client,
-                            available,
-                            held_next,
-                            true,
-                            disputed_txs,
-                        )
-                        .expect("Overflow impossible: available and held amounts should be less than previous total.");
-
-                        *account = account_updated;
-
-                        Ok(())
+                            tx,
+                            held,
+                            amount,
+                        });
                     }
-                    _ => unreachable!(
-                        "Only deposits may be disputed -- see `TxBlockStore::find_transaction`."
-                    ),
-                },
+
+                    // never negative, as we've done the comparison above
+                    let held_next = held.saturating_sub(amount);
+
+                    let mut disputed_txs = account.disputed_txs().to_vec();
+                    disputed_txs.swap_remove(disputed_tx_pos);
+                    let account_updated = Account::try_new(
+                        client,
+                        available,
+                        held_next,
+                        true,
+                        disputed_txs,
+                    )
+                    .expect("Overflow impossible: available and held amounts should be less than previous total.");
+
+                    *account = account_updated;
+
+                    Ok(())
+                }
                 Err(Error::DisputeTxNotFound { .. }) => {
                     // Safe to ignore, according to spec
                     Ok(())

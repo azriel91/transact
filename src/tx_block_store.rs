@@ -49,10 +49,14 @@ impl TxBlockStore {
             .map_err(Error::BlockFileCreate)?;
 
         let (mut block_writer, tx_min, tx_max) = stream::iter(
-            // Only persist deposits, as they're the only transactions that may be disputed
-            transactions
-                .iter()
-                .filter(|transaction| matches!(transaction, Transaction::Deposit(_))),
+            // Only persist deposits and withdrawals, as they're the only transactions that may be
+            // disputed
+            transactions.iter().filter(|transaction| {
+                matches!(
+                    transaction,
+                    Transaction::Deposit(_) | Transaction::Withdrawal(_)
+                )
+            }),
         )
         .map(Result::<_, Error>::Ok)
         .try_fold(
@@ -118,10 +122,12 @@ impl TxBlockStore {
                     .await
                     .map(move |block_transactions| {
                         block_transactions.try_filter(move |transaction| {
-                            // Only match deposits, because dispute/resole/chargeback transactions
-                            // don't carry amounts, and withdrawals are not going to be disputed.
-                            let tx_matches = matches!(transaction, Transaction::Deposit(_))
-                                && transaction.tx() == tx;
+                            // Only match deposits and withdrawals, because
+                            // dispute/resolve/chargeback transactions don't carry amounts.
+                            let tx_matches = matches!(
+                                transaction,
+                                Transaction::Deposit(_) | Transaction::Withdrawal(_)
+                            ) && transaction.tx() == tx;
                             async move { tx_matches }
                         })
                     })
