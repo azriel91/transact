@@ -96,7 +96,7 @@ impl TxBlockStore {
     ///
     /// An optimization is to store disputed transactions and their amounts
     /// separately.
-    pub async fn find_transaction(&self, tx: TxId) -> Result<Transaction, Error> {
+    pub async fn find_transaction(&self, tx: TxId) -> Result<Option<Transaction>, Error> {
         let block_transaction_match = tokio::fs::read_dir(self.temp_dir.path())
             .await
             .map(ReadDirStream::new)
@@ -134,10 +134,7 @@ impl TxBlockStore {
             })
             .try_flatten();
 
-        Box::pin(block_transaction_match)
-            .next()
-            .await
-            .ok_or(Error::DisputeTxNotFound { tx })?
+        Box::pin(block_transaction_match).next().await.transpose()
     }
 
     /// Returns the min and max transaction IDs associated with a dir entry.

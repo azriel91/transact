@@ -21,12 +21,14 @@ use crate::{
     csv::TransactCsv,
     model::{Account, Accounts},
     tx_block_store::TxBlockStore,
+    tx_error::TxError,
     tx_processor::TxProcessor,
 };
 
 mod csv;
 mod error;
 mod tx_block_store;
+mod tx_error;
 mod tx_processor;
 
 /// Number of transactions to store per transaction file.
@@ -65,7 +67,33 @@ where
                 .entry(transaction.client())
                 .or_insert_with(|| Account::empty(transaction.client()));
 
-            tx_processor.process(account, transaction).await?;
+            tx_processor
+                .process(account, transaction)
+                .await
+                .map(|tx_result| match tx_result {
+                    Ok(()) => (),
+                    Err(
+                        // Choose which transaction errors to ignore.
+                        // Errors not in this list will cause the application execution to fail.
+                        TxError::AccountLocked { .. }
+                        | TxError::DisputeClientMismatch { .. }
+                        | TxError::DisputeTxNotFound { .. }
+                        | TxError::DisputeInsufficientAvailable { .. }
+                        | TxError::DisputeHeldOverflow { .. }
+                        | TxError::ResolveClientMismatch { .. }
+                        | TxError::ResolveInsufficientHeld { .. }
+                        | TxError::ResolveAvailableOverflow { .. }
+                        | TxError::ResolveTxNotInDispute { .. }
+                        | TxError::ChargebackClientMismatch { .. }
+                        | TxError::ChargebackInsufficientHeld { .. }
+                        | TxError::ChargebackTxNotInDispute { .. }
+                        | TxError::DepositAmountNegative { .. }
+                        | TxError::DepositAvailableOverflow { .. }
+                        | TxError::DepositTotalOverflow { .. }
+                        | TxError::WithdrawalAmountNegative { .. }
+                        | TxError::WithdrawalInsufficientAvailable { .. },
+                    ) => (),
+                })?;
 
             Ok(accounts)
         })
