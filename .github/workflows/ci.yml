@@ -59,11 +59,7 @@ jobs:
           toolchain: nightly
           components: clippy
 
-      - # FIXME: Switch back when actions-rs/cargo#217 gets merged
-        uses: r3-os/actions-rust-cargo@fb222fe18dc90e381546d012f9e3d6f353f0f627
-        with:
-          command: clippy
-          args: -- -D warnings
+      - run: cargo clippy -- -D warnings
 
   coverage:
     name: Coverage
@@ -83,16 +79,10 @@ jobs:
         run: mkdir -p ./target/coverage
 
       - name: 'Collect coverage'
-        # FIXME: Switch back when actions-rs/cargo#217 gets merged
-        uses: r3-os/actions-rust-cargo@fb222fe18dc90e381546d012f9e3d6f353f0f627
-        with:
-          command: coverage
+        run: cargo coverage
 
       - name: 'Merge coverage'
-        # FIXME: Switch back when actions-rs/cargo#217 gets merged
-        uses: r3-os/actions-rust-cargo@fb222fe18dc90e381546d012f9e3d6f353f0f627
-        with:
-          command: coverage_merge
+        run: cargo coverage_merge
 
       - name: Upload to codecov.io
         uses: codecov/codecov-action@v1
@@ -107,11 +97,7 @@ jobs:
       - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@stable
 
-      - # FIXME: Switch back when actions-rs/cargo#217 gets merged
-        uses: r3-os/actions-rust-cargo@fb222fe18dc90e381546d012f9e3d6f353f0f627
-        with:
-          command: test
-          args: --release
+      - run: cargo test --release
 
   build_and_test_windows:
     name: Build and Test (Windows)
@@ -124,8 +110,4 @@ jobs:
       - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@stable
 
-      - # FIXME: Switch back when actions-rs/cargo#217 gets merged
-        uses: r3-os/actions-rust-cargo@fb222fe18dc90e381546d012f9e3d6f353f0f627
-        with:
-          command: test
-          args: --release
+      - run: cargo test --release
